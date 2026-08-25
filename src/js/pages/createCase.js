@@ -728,6 +728,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       caseIntID = data.id;
       const user_id = loggedInUser.username || "";
       await createCaseHistory({ machine_id, uuid, caseIntID, user_id });
+      await saveCaseInstructions(machine_id, uuid, caseIntID, instructionsInput?.value ?? "");
       // Carries the Request Date through as the case's real due_date and the
       // instructions box through as its comment — same write the case list's
       // own due-date/comment editors use. Request Date used to only default
@@ -1226,11 +1227,39 @@ async function uploadReferenceImage(
       console.log(`✅ Uploaded reference image: ${image.name}`);
     }
 
+
     // Mirrored into a thumbnail slot so it joins the detail carousel. Slots
     // 0-2 are reserved, and `index` is 1-based, so ref image 1 lands on slot 3.
     await uploadCaseThumbnail(machine_id, uuid, caseIntID, 2 + index, base64data);
   } catch (err) {
     console.error(`❌ Error uploading reference image ${image.name}:`, err);
+  }
+}
+
+// The case is brand new, so there is no row to merge with. Non-fatal: this must
+// never fail a case creation that already succeeded.
+async function saveCaseInstructions(machine_id, uuid, caseIntID, text) {
+  const comments = (text || "").trim();
+  if (!caseIntID || !comments) return;
+  const payload = [
+    { machine_id, uuid, caseIntID },
+    { assigned_to: null, due_date: null, new_status: null, comments },
+  ];
+  try {
+    const res = await fetch(
+      `${API_BASE}/additionalcasedetails`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }
+    );
+    logApi(res, "POST /additionalcasedetails");
+    if (!res.ok) {
+      console.error("❌ Failed to save case instructions:", res.status);
+    }
+  } catch (err) {
+    console.error("❌ Error saving case instructions:", err);
   }
 }
 

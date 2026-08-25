@@ -776,12 +776,6 @@ button {
 
 .cm-row {
   cursor: pointer;
-  /* Same fix as .notification-item in notification.css: without this, two
-     quick taps on a row (a plausible re-tap while its detail fetch is in
-     flight) read as a double-tap and iOS Safari zooms into it, same as
-     tapping any other plain element twice. `manipulation` keeps the
-     single-tap select working and just drops that gesture. */
-  touch-action: manipulation;
 }
 .cm-row.is-active:hover { background: #e6f5ef; }
 
@@ -858,11 +852,7 @@ button {
 
 .cm-status-inline {
   font: inherit;
-  /* Below 16px, focusing this <select> (openStatusEditor calls .focus() on tap
-     — caseManagement.js) makes iOS Safari zoom the whole page in to make the
-     text legible, and it doesn't zoom back out on its own. 16px is the
-     documented threshold that keeps that from firing. */
-  font-size: 16px;
+  font-size: 13px;
   color: var(--ink);
   background: var(--panel);
   border: 1px solid var(--primary);
@@ -1016,7 +1006,6 @@ button {
   opacity: 0;
   cursor: pointer;
   font: inherit;
-  font-size: 16px;
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
@@ -1248,10 +1237,7 @@ button {
   box-sizing: border-box;
   padding: 8px 10px;
   font-family: inherit;
-  /* iOS Safari zooms the whole page when a form control below 16px receives
-     focus. This field sits inside the mobile detail slider, so keep its focused
-     text at the safe floor and avoid returning to a magnified list. */
-  font-size: 16px;
+  font-size: 13px;
   line-height: 1.5;
   color: var(--ink);
   background: #fff;

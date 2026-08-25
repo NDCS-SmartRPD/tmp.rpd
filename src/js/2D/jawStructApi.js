@@ -92,3 +92,39 @@ export async function saveJawStructFromState(caseIntID, uuid, state) {
   ]);
   return { upper: upperRes, lower: lowerRes };
 }
+
+/**
+ * Generate one proposed 2D design through the M2 DLL. The backend currently exposes the
+ * single-option API behind this route and defaults to Heavy (1) unless overridden.
+ */
+export async function generateDentureDesignSelect(caseIntID, uuid, state, options = {}) {
+  const jawMaterial = Number.isFinite(Number(options.jawMaterial))
+    ? Number(options.jawMaterial)
+    : (Number.isFinite(Number(state?.jawMaterial)) ? Number(state.jawMaterial) : 0);
+  const designOption = Number.isFinite(Number(options.designOption))
+    ? Number(options.designOption)
+    : 1;
+  const encodeState = { ...state, jawMaterial };
+  const jaws = Array.isArray(options.jaws) && options.jaws.length
+    ? options.jaws.filter((jaw) => jaw === "upper" || jaw === "lower")
+    : ["upper", "lower"];
+  const records = jaws.map((jaw) => {
+    const data = encodeJawStructBase64(encodeState, jaw);
+    const type = jaw === "upper" ? "upper_jaw" : "lower_jaw";
+    return {
+      type,
+      filename: jaw === "upper" ? "JawUpper_Struct_L2.txt" : "JawLower_Struct_L2.txt",
+      data,
+      jawStructBase64: data,
+    };
+  });
+  console.log("[jawStructApi] proposed design jaws:", records.map((record) => record.type));
+  const payload = buildPayload(caseIntID, uuid, {
+    jaw_material: jawMaterial,
+    jawMaterial,
+    design_option: designOption,
+    designOption,
+    records,
+  });
+  return postJson("/dll/compute-denture-design-select", payload);
+}

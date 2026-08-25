@@ -132,8 +132,20 @@ style.textContent = `
     border: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: 14px;
     background: rgba(56, 58, 64, 0.55);
+    display: flex;
+    flex-direction: column;
+    width: min(268px, calc(100vw - 290px));
+    max-height: min(300px, calc(100% - 32px));
+    overflow: hidden;
+    padding: 4px 0 2px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 14px;
+    background: rgba(56, 58, 64, 0.55);
     -webkit-backdrop-filter: blur(16px) saturate(140%);
     backdrop-filter: blur(16px) saturate(140%);
+    color: #ffffff;
+    box-shadow: 0 16px 38px rgba(0, 0, 0, 0.34);
+    font-family: "Montserrat", Arial, sans-serif;
     color: #ffffff;
     box-shadow: 0 16px 38px rgba(0, 0, 0, 0.34);
     font-family: "Montserrat", Arial, sans-serif;
@@ -176,9 +188,12 @@ style.textContent = `
   /* "Show / Hide" bar: a chevron that folds the list away, plus the close X. */
   .component-panel-header {
     flex: 0 0 auto;
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     gap: 8px;
+    padding: 6px 10px 7px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
     padding: 6px 10px 7px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   }
@@ -190,11 +205,45 @@ style.textContent = `
     padding: 0;
     border: 0;
     background: transparent;
+  .component-panel-collapse {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    background: transparent;
     color: #ffffff;
     cursor: pointer;
     transition: transform 0.18s ease;
+    transition: transform 0.18s ease;
   }
 
+  .component-panel-collapse::before {
+    content: "";
+    display: block;
+    width: 7px;
+    height: 7px;
+    margin: 3px auto 0;
+    border-left: 2px solid currentColor;
+    border-top: 2px solid currentColor;
+    transform: rotate(45deg);
+  }
+
+  .component-panel.is-collapsed .component-panel-collapse {
+    transform: rotate(180deg);
+  }
+
+  .component-panel-title {
+    flex: 1 1 auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
   .component-panel-collapse::before {
     content: "";
     display: block;
@@ -230,7 +279,15 @@ style.textContent = `
     border: 0;
     border-radius: 6px;
     background: rgba(255, 255, 255, 0.12);
+    flex: 0 0 auto;
+    width: 20px;
+    height: 20px;
+    border: 0;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.12);
     color: #ffffff;
+    font-size: 14px;
+    font-weight: 700;
     font-size: 14px;
     font-weight: 700;
     line-height: 1;
@@ -262,6 +319,7 @@ style.textContent = `
 
   .component-row.unavailable {
     opacity: 0.45;
+    opacity: 0.45;
   }
 
   .component-row.unavailable button,
@@ -269,6 +327,8 @@ style.textContent = `
     cursor: not-allowed;
   }
 
+  /* min-height:0 lets a flex child scroll instead of growing past max-height.
+     NOT grid: align-content:stretch compresses rows and clips their name band. */
   /* min-height:0 lets a flex child scroll instead of growing past max-height.
      NOT grid: align-content:stretch compresses rows and clips their name band. */
   .component-panel-body {
@@ -300,7 +360,37 @@ style.textContent = `
 
   /* One tinted block per object. --row-tint comes from the object's own
      material colour, so a row reads as the thing it drives. */
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 10px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.35) transparent;
+  }
+
+  .component-panel-body::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .component-panel-body::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  .component-panel.is-collapsed .component-panel-body,
+  .component-panel.is-collapsed .component-panel-footer {
+    display: none;
+  }
+
+  /* One tinted block per object. --row-tint comes from the object's own
+     material colour, so a row reads as the thing it drives. */
   .component-row {
+    --row-tint: #5f6070;
+    flex: 0 0 auto;
     --row-tint: #5f6070;
     flex: 0 0 auto;
     display: grid;
@@ -312,20 +402,36 @@ style.textContent = `
 
   .component-row-rail {
     display: flex;
+    gap: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--row-tint);
+  }
+
+  .component-row-rail {
+    display: flex;
     align-items: center;
+    padding: 4px 7px;
+    background: rgba(255, 255, 255, 0.18);
     padding: 4px 7px;
     background: rgba(255, 255, 255, 0.18);
   }
 
   .component-row-band {
+  .component-row-band {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
+    gap: 6px;
+    padding: 5px 7px;
     gap: 6px;
     padding: 5px 7px;
   }
 
   .component-row-icon {
+    width: 18px;
+    height: 18px;
     width: 18px;
     height: 18px;
     object-fit: contain;
@@ -335,9 +441,11 @@ style.textContent = `
     overflow: hidden;
     color: #ffffff;
     font-size: 11px;
+    font-size: 11px;
     font-weight: 700;
     text-overflow: ellipsis;
     white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   }
 
@@ -345,12 +453,17 @@ style.textContent = `
     display: flex;
     flex-direction: row;
     gap: 4px;
+    gap: 4px;
     align-items: center;
   }
 
   /* Pill rail whose fill is painted by the track background from --fill (set
      on input), so it reads at a glance without a visible thumb. */
+  /* Pill rail whose fill is painted by the track background from --fill (set
+     on input), so it reads at a glance without a visible thumb. */
   .component-opacity-control {
+    -webkit-appearance: none;
+    appearance: none;
     -webkit-appearance: none;
     appearance: none;
     min-width: 0;
@@ -413,31 +526,99 @@ style.textContent = `
   }
 
   /* Bare icons on the tinted band — no plate, matching the reference. */
+    height: 12px;
+    margin: 0;
+    padding: 0;
+    border: 1.5px solid rgba(0, 0, 0, 0.7);
+    border-radius: 999px;
+    background:
+      linear-gradient(#e08a5f, #e08a5f) left center / var(--fill, 100%) 100% no-repeat,
+      #2f2f33;
+    cursor: pointer;
+  }
+
+  .component-opacity-control::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 3px;
+    height: 9px;
+    border: 0;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.85);
+  }
+
+  .component-opacity-control::-moz-range-thumb {
+    width: 3px;
+    height: 9px;
+    border: 0;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.85);
+  }
+
+  .component-opacity-control::-moz-range-track {
+    background: transparent;
+  }
+
+  /* "Hide All" / "Show All" — the list-wide switch, under a divider. */
+  .component-panel-footer {
+    flex: 0 0 auto;
+    padding: 6px 10px 4px;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .component-panel-showhide {
+    width: 100%;
+    padding: 1px 0;
+    border: 0;
+    background: transparent;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .component-panel-showhide:hover {
+    text-decoration: underline;
+  }
+
+  /* Bare icons on the tinted band — no plate, matching the reference. */
   .component-eye-button,
   .component-analysis-button,
+  .component-polyline-button,
   .component-polyline-button,
   .component-web-button {
     position: relative;
     flex: 0 0 20px;
     width: 20px;
     height: 20px;
+    flex: 0 0 20px;
+    width: 20px;
+    height: 20px;
     padding: 0;
     border: 0;
+    border: 0;
     border-radius: 5px;
+    background: transparent;
     background: transparent;
     background-position: center;
     background-repeat: no-repeat;
     background-size: 16px 16px;
+    background-size: 16px 16px;
     color: transparent;
     cursor: pointer;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
     filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
   }
 
   .component-eye-button {
     background-size: 19px 11px;
+    background-size: 19px 11px;
   }
 
   .component-eye-button.hidden-state {
+    opacity: 0.75;
     opacity: 0.75;
   }
 
@@ -447,11 +628,33 @@ style.textContent = `
     top: 50%;
     width: 17px;
     height: 1.5px;
+    width: 17px;
+    height: 1.5px;
     background: #ef9a9a;
     transform: translate(-50%, -50%) rotate(-38deg);
     border-radius: 999px;
   }
 
+  .component-analysis-button.active,
+  .component-polyline-button.vpm-active {
+    background-color: rgba(56, 189, 248, 0.85);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55);
+  }
+
+  .component-polyline-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* A slot's first undercut switch waits on the case scan download — pulse until it lands. */
+  .component-analysis-button.is-busy {
+    opacity: 0.6;
+    cursor: progress;
+    animation: component-analysis-busy 1s ease-in-out infinite;
+  }
+
+  @keyframes component-analysis-busy {
+    50% { opacity: 1; }
   .component-analysis-button.active,
   .component-polyline-button.vpm-active {
     background-color: rgba(56, 189, 248, 0.85);
@@ -481,6 +684,8 @@ style.textContent = `
     top: 50%;
     width: 16px;
     height: 10px;
+    width: 16px;
+    height: 10px;
     border: 1.5px solid rgba(255, 255, 255, 0.92);
     border-radius: 999px;
     transform: translate(-50%, -50%);
@@ -494,8 +699,14 @@ style.textContent = `
     top: 50%;
     width: 16px;
     height: 10px;
+    width: 16px;
+    height: 10px;
     transform: translate(-50%, -50%);
     background:
+      linear-gradient(rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.9)) center / 1.2px 10px no-repeat,
+      linear-gradient(rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.9)) center / 16px 1.2px no-repeat,
+      linear-gradient(rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.78)) left 4px top / 16px 1.2px no-repeat,
+      linear-gradient(rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.78)) left top 3px / 1.2px 10px no-repeat;
       linear-gradient(rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.9)) center / 1.2px 10px no-repeat,
       linear-gradient(rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.9)) center / 16px 1.2px no-repeat,
       linear-gradient(rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.78)) left 4px top / 16px 1.2px no-repeat,
@@ -506,9 +717,12 @@ style.textContent = `
   .component-web-button.active {
     background-color: rgba(0, 0, 0, 0.45);
     box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.45);
+    background-color: rgba(0, 0, 0, 0.45);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.45);
   }
 
   .component-web-button.has-icon {
+    background-size: 18px 12px;
     background-size: 18px 12px;
   }
 
@@ -569,6 +783,9 @@ style.textContent = `
     pointer-events: none;
   }
 
+  .viewer-undercut-legend.hidden {
+    display: none;
+  }
   .viewer-undercut-legend.hidden {
     display: none;
   }
@@ -651,7 +868,7 @@ style.textContent = `
     }
   }
 
-  @media (min-width: 769px) and (max-width: 1024px) {
+  @media (max-width: 768px) {
     .component-panel-toggle {
       width: 56px;
       height: 56px;
@@ -819,6 +1036,24 @@ function getGroupTint(group) {
   return `#${color.getHexString()}`;
 }
 
+// A row is tinted with the colour of the thing it drives. Overlay rows have no
+// material to read, so they fall back to a neutral lavender.
+const ROW_TINT_FALLBACK = "#5f6070";
+
+function getGroupTint(group) {
+  const material = group.meshes
+    ?.flatMap((mesh) => (Array.isArray(mesh.material) ? mesh.material : [mesh.material]))
+    // A vertexColors material (what the case jaws use) has a white multiplier
+    // for its own colour, which would tint the row white and swallow its label.
+    .find((entry) => entry?.color && !entry.vertexColors);
+  if (!material) return ROW_TINT_FALLBACK;
+  // Keep every tint dark enough for white content to read on it.
+  const color = material.color.clone();
+  const hsl = color.getHSL({ h: 0, s: 0, l: 0 });
+  color.setHSL(hsl.h, Math.max(hsl.s, 0.14), Math.min(Math.max(hsl.l, 0.3), 0.46));
+  return `#${color.getHexString()}`;
+}
+
 function createComponentPanel(groups) {
   removeVisibilityAndTransparencyControls();
 
@@ -864,9 +1099,18 @@ function createComponentPanel(groups) {
   collapseButton.setAttribute("aria-label", "Collapse the object list");
   collapseButton.setAttribute("aria-expanded", "true");
 
+  const collapseButton = document.createElement("button");
+  collapseButton.type = "button";
+  collapseButton.className = "component-panel-collapse";
+  collapseButton.title = "Collapse";
+  collapseButton.setAttribute("aria-label", "Collapse the object list");
+  collapseButton.setAttribute("aria-expanded", "true");
+
   const title = document.createElement("button");
   title.type = "button";
   title.className = "component-panel-title";
+  title.textContent = "Show / Hide";
+  title.title = "Collapse the object list";
   title.textContent = "Show / Hide";
   title.title = "Collapse the object list";
 
@@ -877,6 +1121,7 @@ function createComponentPanel(groups) {
   closeButton.title = "Close objects";
   closeButton.setAttribute("aria-label", "Close objects");
 
+  header.appendChild(collapseButton);
   header.appendChild(collapseButton);
   header.appendChild(title);
 
@@ -893,6 +1138,15 @@ function createComponentPanel(groups) {
 
   const body = document.createElement("div");
   body.className = "component-panel-body";
+
+  // List-wide switch, below the rows.
+  const footer = document.createElement("div");
+  footer.className = "component-panel-footer";
+  const showHideAllButton = document.createElement("button");
+  showHideAllButton.type = "button";
+  showHideAllButton.className = "component-panel-showhide";
+  footer.appendChild(showHideAllButton);
+
 
   // List-wide switch, below the rows.
   const footer = document.createElement("div");
@@ -939,10 +1193,14 @@ function createComponentPanel(groups) {
   const syncAllRows = () => {
     rowControllers.forEach((controller) => controller.sync());
     reorderRows();
+    reorderRows();
     syncShowHideButton();
+    syncUndercutLegend();
     syncUndercutLegend();
   };
 
+  showHideAllButton.addEventListener("click", () => {
+    const allVisible = areAllGroupsVisible();
   showHideAllButton.addEventListener("click", () => {
     const allVisible = areAllGroupsVisible();
     groups.forEach((group) => {
@@ -960,11 +1218,22 @@ function createComponentPanel(groups) {
   collapseButton.addEventListener("click", toggleCollapsed);
   title.addEventListener("click", toggleCollapsed);
 
+  const toggleCollapsed = () => {
+    const collapsed = panel.classList.toggle("is-collapsed");
+    collapseButton.setAttribute("aria-expanded", String(!collapsed));
+    collapseButton.title = collapsed ? "Expand" : "Collapse";
+  };
+  collapseButton.addEventListener("click", toggleCollapsed);
+  title.addEventListener("click", toggleCollapsed);
+
   groups.forEach((group) => {
     const row = document.createElement("div");
     row.className = "component-row";
     row.style.setProperty("--row-tint", getGroupTint(group));
+    row.style.setProperty("--row-tint", getGroupTint(group));
 
+    const band = document.createElement("div");
+    band.className = "component-row-band";
     const band = document.createElement("div");
     band.className = "component-row-band";
 
@@ -977,11 +1246,16 @@ function createComponentPanel(groups) {
       band.appendChild(rowIcon);
     } else {
       band.appendChild(document.createElement("span"));
+      band.appendChild(rowIcon);
+    } else {
+      band.appendChild(document.createElement("span"));
     }
 
     const rowTitle = document.createElement("div");
     rowTitle.className = "component-row-title";
     rowTitle.textContent = group.label;
+    rowTitle.title = group.label; // labels ellipsize at this width
+    band.appendChild(rowTitle);
     rowTitle.title = group.label; // labels ellipsize at this width
     band.appendChild(rowTitle);
 
@@ -1032,6 +1306,9 @@ function createComponentPanel(groups) {
     // Slot rows offer undercut only (borrowed from the case jaw); the case's own jaws
     // offer both analyses.
     if (group.supportsAnalysis || group.supportsUndercut) {
+    // Slot rows offer undercut only (borrowed from the case jaw); the case's own jaws
+    // offer both analyses.
+    if (group.supportsAnalysis || group.supportsUndercut) {
       undercutButton = document.createElement("button");
       undercutButton.type = "button";
       undercutButton.className = "component-analysis-button";
@@ -1075,7 +1352,45 @@ function createComponentPanel(groups) {
         syncAllRows();
       });
     }
+    }
 
+    if (undercutButton) buttonsRow.appendChild(undercutButton);
+    if (occlusionButton) buttonsRow.appendChild(occlusionButton);
+
+    // The polyline rows carry the opener for the polyline panel — it has no
+    // button of its own in the nav.
+    let polylineButton = null;
+    if (group.opensPolylinePanel) {
+      polylineButton = document.createElement("button");
+      polylineButton.type = "button";
+      polylineButton.className = "component-polyline-button";
+      polylineButton.style.backgroundImage = `url(${basePath}/assets/Icon_Hide_SkeletalPrev.png)`;
+      polylineButton.title = "Polyline components";
+      polylineButton.setAttribute("aria-label", "Polyline components");
+      polylineButton.addEventListener("click", () => {
+        const controller = window.polylinePanelController;
+        if (!controller) return;
+        if (window.viewerPanelManager) {
+          window.viewerPanelManager.toggle("polylines-panel");
+          return;
+        }
+        if (controller.isOpen()) controller.close();
+        else controller.open();
+      });
+      buttonsRow.appendChild(polylineButton);
+
+      // Both jaw rows open the same panel; the first one registered is the
+      // button the panel manager highlights.
+      const controller = window.polylinePanelController;
+      if (controller && !polylinePanelRegistered) {
+        polylinePanelRegistered = true;
+        window.viewerPanelManager?.register(
+          "polylines-panel",
+          polylineButton,
+          controller.open,
+          controller.close
+        );
+      }
     if (undercutButton) buttonsRow.appendChild(undercutButton);
     if (occlusionButton) buttonsRow.appendChild(occlusionButton);
 
@@ -1139,6 +1454,11 @@ function createComponentPanel(groups) {
     }
 
     band.appendChild(buttonsRow);
+    band.appendChild(buttonsRow);
+
+    // Opacity rail, above the name band.
+    const rail = document.createElement("div");
+    rail.className = "component-row-rail";
 
     // Opacity rail, above the name band.
     const rail = document.createElement("div");
@@ -1152,11 +1472,19 @@ function createComponentPanel(groups) {
     opacitySlider.value = "100";
     opacitySlider.title = `${group.label} opacity`;
     opacitySlider.setAttribute("aria-label", `${group.label} opacity`);
+    opacitySlider.setAttribute("aria-label", `${group.label} opacity`);
 
     opacitySlider.addEventListener("input", () => {
       // Only this row while dragging: syncAllRows() re-appends every row and made
       // the slider stiff. Opacity can't reorder, so the resync waits for drag end.
+      // Only this row while dragging: syncAllRows() re-appends every row and made
+      // the slider stiff. Opacity can't reorder, so the resync waits for drag end.
       group.setOpacity?.(Number(opacitySlider.value) / 100);
+      opacitySlider.style.setProperty("--fill", `${opacitySlider.value}%`);
+      rail.dataset.opacity = opacitySlider.value;
+    });
+
+    opacitySlider.addEventListener("change", () => {
       opacitySlider.style.setProperty("--fill", `${opacitySlider.value}%`);
       rail.dataset.opacity = opacitySlider.value;
     });
@@ -1166,12 +1494,19 @@ function createComponentPanel(groups) {
     });
 
     rail.appendChild(opacitySlider);
+    rail.appendChild(opacitySlider);
 
+    row.appendChild(rail);
+    row.appendChild(band);
     row.appendChild(rail);
     row.appendChild(band);
     body.appendChild(row);
 
     rowControllers.push({
+      row,
+      // A component can become available (or not) after the panel was built,
+      // so read this fresh on each reorder rather than caching at creation.
+      hasContent: () => group.hasContent?.() ?? true,
       row,
       // A component can become available (or not) after the panel was built,
       // so read this fresh on each reorder rather than caching at creation.
@@ -1200,6 +1535,10 @@ function createComponentPanel(groups) {
         opacitySlider.style.setProperty("--fill", `${opacityValue}%`);
         rail.dataset.opacity = String(opacityValue);
         if (polylineButton) polylineButton.disabled = !hasContent;
+        // Paints the filled portion of the rail.
+        opacitySlider.style.setProperty("--fill", `${opacityValue}%`);
+        rail.dataset.opacity = String(opacityValue);
+        if (polylineButton) polylineButton.disabled = !hasContent;
         const mode = group.getMode?.() || "normal";
         undercutButton?.classList.toggle("active", mode === "undercut");
         occlusionButton?.classList.toggle("active", mode === "occlusion");
@@ -1215,6 +1554,7 @@ function createComponentPanel(groups) {
     if (window.viewerPanelManager) {
       window.viewerPanelManager.toggle("objects-panel");
     } else {
+      openPanel();
       openPanel();
     }
   });
@@ -1261,8 +1601,11 @@ function createComponentPanel(groups) {
   panel.appendChild(body);
   panel.appendChild(footer);
   // Objects sits in the canvas's own top-left corner, not in the right nav.
+  panel.appendChild(footer);
+  // Objects sits in the canvas's own top-left corner, not in the right nav.
   const panelHost =
     document.getElementById("container3D") ||
+    window.getViewerRightNav?.()?.parentElement ||
     window.getViewerRightNav?.()?.parentElement ||
     document.body;
   panelHost.appendChild(backdrop);
@@ -1435,6 +1778,9 @@ function addVisibilityAndTransparencyControls(
     // Slot STLs stay parked hidden during case view. They carry a jaw_type, so
     // without this the jaw eye toggle would switch them back on over the case mesh.
     if (child.userData?.isDesignSlot) return;
+    // Slot STLs stay parked hidden during case view. They carry a jaw_type, so
+    // without this the jaw eye toggle would switch them back on over the case mesh.
+    if (child.userData?.isDesignSlot) return;
     child.userData.baseGeometry = child.userData.baseGeometry || child.geometry;
     const jawKey = getJawKey(child);
     if (!jawKey) return;
@@ -1499,6 +1845,7 @@ function addVisibilityAndTransparencyControls(
       iconPath: `${basePath}/assets/Icon_Hide_SkeletalPrev.png`,
       meshes: [],
       supportsAnalysis: false,
+      opensPolylinePanel: true,
       opensPolylinePanel: true,
       hasContent: () => window.hasPolylineJawComponents?.(jawKey) ?? false,
       getVisible: () => window.getPolylineJawVisibility?.(jawKey) ?? true,

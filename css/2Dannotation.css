@@ -1437,17 +1437,23 @@ button.upload3d-row {
 }
 
 .jaw-preview-undercut {
+  --jaw-preview-heatmap-icon-size: 35px;
+  --jaw-preview-heatmap-gap: 7px;
   position: absolute;
   left: 8px;
   top: 8px;
   z-index: 8;
 }
 
+.jaw-preview-occlusion {
+  left: calc(8px + var(--jaw-preview-heatmap-icon-size) + var(--jaw-preview-heatmap-gap));
+}
+
 /* Undercut icon button — the legend dropdown's anchor in the corner. */
 .jaw-preview-undercut-icon {
   display: block;
-  width: 35px;
-  height: 35px;
+  width: var(--jaw-preview-heatmap-icon-size);
+  height: var(--jaw-preview-heatmap-icon-size);
   padding: 0;
   border: 0;
   background: none;
@@ -1465,6 +1471,18 @@ button.upload3d-row {
 }
 .jaw-preview-undercut-icon:active {
   transform: scale(0.96);
+}
+.jaw-preview-undercut-icon:disabled {
+  cursor: progress;
+  opacity: 0.65;
+}
+.jaw-preview-occlusion-icon.is-loading img {
+  animation: jawPreviewHeatmapPulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes jawPreviewHeatmapPulse {
+  from { opacity: 0.45; }
+  to { opacity: 1; }
 }
 
 /* The legend dropdown: borderless by design; the shadow alone lifts it off the mesh. */
@@ -3518,8 +3536,14 @@ button.upload3d-row {
   }
 
   .jaw-preview-undercut {
+    --jaw-preview-heatmap-icon-size: clamp(30px, 9vw, 35px);
+    --jaw-preview-heatmap-gap: clamp(6px, 2vw, 9px);
     left: 10px;
     top: 10px;
+  }
+
+  .jaw-preview-occlusion {
+    left: calc(10px + var(--jaw-preview-heatmap-icon-size) + var(--jaw-preview-heatmap-gap));
   }
 
   .jaw-preview-undercut-panel {

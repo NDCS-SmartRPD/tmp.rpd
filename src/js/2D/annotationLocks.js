@@ -458,7 +458,7 @@ export function updateEditModeUI() {
   if (clearUpperComponents) clearUpperComponents.classList.toggle("is-hidden", !active);
   if (clearLowerComponents) clearLowerComponents.classList.toggle("is-hidden", !active);
 
-  // Draw from Scratch / Load Template Jaw are design-mode actions — hide them
+  // Draw from Scratch / Load Proposed Design are design-mode actions — hide them
   // in tooth-selection mode.
   const drawScratch = document.getElementById("drawFromScratchBtn");
   const loadTemplate = document.getElementById("loadProposalBtn");

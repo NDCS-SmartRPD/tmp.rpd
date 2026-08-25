@@ -229,6 +229,18 @@ html, body {
   outline-offset: 1px;
 }
 
+/* Footer twin of the canvas's floating Objects toggle; only takes over once
+   that one hides (see #component-panel-toggle in newControls.js). */
+#footerObjectsBtn {
+  display: none;
+}
+
+@media (max-width: 1024px) {
+  #footerObjectsBtn {
+    display: inline-flex;
+  }
+}
+
 .cm-footer [data-tooltip] {
   position: relative;
 }

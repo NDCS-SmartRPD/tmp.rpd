@@ -17,10 +17,15 @@ import {
   isPlateComponentId,
   meshSelectionContextFromState,
 } from "./components.js";
-import { fetchJawStruct as apiFetchJawStruct, saveJawStructFromState } from "./jawStructApi.js";
+import {
+  fetchJawStruct as apiFetchJawStruct,
+  generateDentureDesignSelect,
+  saveJawStructFromState,
+} from "./jawStructApi.js";
 import { decodeJawStructResponse, resolveJawStructDesign } from "./jawStructCodec.js";
 import { applyJawStructDesign } from "./jawStructApply.js";
 import { applyDesignProposal, buildDesignProposal } from "./JawDesignProposal.js";
+import { classifyArch } from "./JawDesign.js";
 import { logApi } from "../shared/apiLog.js";
 import { toast, flashToast } from "../shared/toast.js";
 import { VIEWER_UUID } from "../shared/config.js";
@@ -1111,7 +1116,115 @@ async function captureProposalThumbnails(proposal) {
   }
 }
 
-// Wire the "Load Template Jaw" button to the proposal modal (markup in the HTML).
+function firstArray(...values) {
+  return values.find((value) => Array.isArray(value)) || null;
+}
+
+function normalizeDllProposalRecords(body) {
+  const wrappers = [body, body?.data, body?.result, body?.payload].filter(Boolean);
+  for (const wrapper of wrappers) {
+    const direct = firstArray(wrapper.records, wrapper.jaw_records, wrapper.jawRecords);
+    if (direct?.length) return direct;
+
+    const options = firstArray(wrapper.options, wrapper.design_options, wrapper.designOptions);
+    if (!options?.length) continue;
+    const option = options.find((item) => firstArray(item?.records, item?.jaw_records, item?.jawRecords)?.length) || options[0];
+    const optionRecords = firstArray(option?.records, option?.jaw_records, option?.jawRecords);
+    if (optionRecords?.length) return optionRecords;
+  }
+  return [];
+}
+
+async function refreshDesignUiAfterJawStructApply() {
+  try {
+    const [catalog, locks] = await Promise.all([
+      import("./annotationCatalog.js"),
+      import("./annotationLocks.js"),
+    ]);
+    catalog.renderComponentCatalog();
+    locks.updateEditModeUI();
+  } catch (_) {}
+}
+
+function jawsWithDllProposalTargets() {
+  return ["upper", "lower"].filter((jaw) =>
+    Boolean(classifyArch(state.teeth, jaw)?.classNumber)
+  );
+}
+
+async function tryLoadDllProposedDesign() {
+  if (!state.caseIntID) {
+    throw new Error("No case is selected.");
+  }
+  const loggedInUser = getLoggedInUser();
+  if (!loggedInUser?.uuid) {
+    throw new Error("No logged-in user UUID is available.");
+  }
+
+  const material = Number.isFinite(Number(state.jawMaterial)) ? Number(state.jawMaterial) : 0;
+  const jaws = jawsWithDllProposalTargets();
+  if (!jaws.length) {
+    throw new Error("No partial-edentulous jaw selected for proposed design.");
+  }
+  const historyBefore = getHistoryStateSignature();
+  const response = await generateDentureDesignSelect(state.caseIntID, loggedInUser.uuid, state, {
+    jawMaterial: material,
+    designOption: 1,
+    jaws,
+  });
+  if (!response?.ok) {
+    throw new Error(`DLL request failed with status ${response?.status || 0}`);
+  }
+
+  const records = normalizeDllProposalRecords(response.body);
+  if (!records.length) {
+    const returnCode = response.body?.return_code ?? response.body?.returnCode;
+    throw new Error(
+      returnCode == null
+        ? "DLL response did not include jaw-struct records."
+        : `DLL response did not include jaw-struct records (return_code=${returnCode}).`
+    );
+  }
+
+  const decoded = decodeJawStructResponse(records);
+  let applied = false;
+  const savedMaterial = Number(
+    decoded.upper?.other?.["Jaw Material"] ??
+      decoded.lower?.other?.["Jaw Material"] ??
+      material
+  );
+  state.jawMaterial = Number.isFinite(savedMaterial) ? savedMaterial : material;
+
+  try {
+    if (decoded.upper) {
+      applyJawStructDesign(resolveJawStructDesign(decoded.upper), state);
+      applied = true;
+    }
+  } catch (err) {
+    console.error("[proposedDesign] upper DLL design apply failed:", err);
+  }
+  try {
+    if (decoded.lower) {
+      applyJawStructDesign(resolveJawStructDesign(decoded.lower), state);
+      applied = true;
+    }
+  } catch (err) {
+    console.error("[proposedDesign] lower DLL design apply failed:", err);
+  }
+
+  if (!applied) {
+    throw new Error("DLL response could not be applied to either jaw.");
+  }
+
+  await refreshDesignUiAfterJawStructApply();
+  renderJaws();
+  recordHistoryIfChanged(historyBefore);
+  setMessage("Loaded the proposed design from the DLL.", false);
+  toast.success("Proposed design loaded");
+  return true;
+}
+
+// Wire the "Load Proposed Design" button to the DLL first, then the fallback modal.
 function bindKennedyProposalDialog() {
   const btn = document.getElementById("loadProposalBtn");
   const modal = document.getElementById("loadTemplateJawModal");
@@ -1149,6 +1262,14 @@ function bindKennedyProposalDialog() {
   };
 
   const openModal = async () => {
+    setMessage("Generating proposed design...", false);
+    try {
+      if (await tryLoadDllProposedDesign()) return;
+    } catch (err) {
+      console.warn("[proposedDesign] DLL unavailable; showing fallback proposal", err);
+      setMessage("DLL proposed design unavailable; showing fallback proposal.", false);
+    }
+
     // Rebuilt on every open so it tracks presence edits made since the last one.
     pendingProposal = buildCurrentProposal();
     const placeable = Object.values(pendingProposal.jaws).some((plan) => plan.connector);
@@ -1518,7 +1639,7 @@ function initAnnFooter() {
     window.dispatchEvent(new CustomEvent("request-download-jaw-profile"));
   });
 
-  // Load Template Jaw: upload one or more Jaw Struct .txt files and apply them.
+  // Load Proposed Design: call the DLL first, then fall back to the local proposal modal.
   bindKennedyProposalDialog();
 
   initSidebar();

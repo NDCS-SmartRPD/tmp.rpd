@@ -65,6 +65,12 @@
           <button type="button" class="cm-footer-btn cm-footer-chat-btn" id="footerChatBtn" aria-label="Open chat" data-tooltip="Chat">
             <i class="fa-regular fa-comment" aria-hidden="true"></i>
           </button>
+          <!-- Mobile/tablet only (see #footerObjectsBtn in style.css) — opens the
+               Objects (Show/Hide) panel as a right-side sidebar instead of the
+               floating top-left toggle, which is hidden at those widths. -->
+          <button type="button" class="cm-footer-btn cm-footer-tool-btn" id="footerObjectsBtn" aria-label="Objects" aria-pressed="false" data-tooltip="Objects">
+            <img src="../../assets/Icon_objects3.png" alt="Objects" class="cm-footer-tool-icon">
+          </button>
           <button type="button" class="cm-footer-btn" id="footerRightNavBtn" aria-label="Close right panel" data-tooltip="Right panel">
             <img id="footerRightNavIcon" src="" alt="Right panel" style="width:22px;height:22px;object-fit:contain;display:block;">
           </button>
