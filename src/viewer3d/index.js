@@ -5860,6 +5860,29 @@ function removeViewerLoadingScreen() {
     return true;
   }
 
+  // Jaw uploads open in undercut mode once their eager survey is ready. Keep the
+  // slot download flow non-blocking: the remaining files can continue loading
+  // while the DLL computes the heatmap for slots 1 and 3.
+  function enableDefaultSlotUndercut(slot, mesh, surveyPromise) {
+    if (FRAMEWORK_SLOTS.has(slot) || !surveyPromise) return;
+
+    Promise.resolve(surveyPromise)
+      .then(async (geometry) => {
+        // A re-upload may have replaced this mesh while its old survey was still
+        // running. Never apply stale geometry to the replacement.
+        const currentMesh = designSlotMeshes.find(
+          (entry) => entry.userData?.designSlot === slot
+        );
+        if (!geometry || currentMesh !== mesh) return;
+
+        const applied = await setDesignSlotUndercut(slot, true);
+        if (applied && designViewActive) rebuildObjectsPanel();
+      })
+      .catch((error) => {
+        console.warn(`[viewer3D] slot ${slot}: default undercut view failed`, error);
+      });
+  }
+
   function isDesignViewActive() {
     return designViewActive;
   }
@@ -5878,8 +5901,8 @@ function removeViewerLoadingScreen() {
       jawGroup: EXTRA_STL_SLOT_JAW[slot],
       mesh: designSlotMeshes.find((m) => m.userData?.designSlot === slot) || null,
       // Only the jaw slots get their own survey — the framework slots are a
-      // different mesh with no undercut data. Undercut display starts off, but
-      // the survey itself already ran when the mesh loaded (ensureSlotUndercutGeometry).
+      // different mesh with no undercut data. Jaw slots switch to undercut mode
+      // automatically as soon as their eager survey completes.
       supportsUndercut: !FRAMEWORK_SLOTS.has(slot),
       getUndercut: () => isDesignSlotUndercutOn(slot),
       setUndercut: (enabled) => setDesignSlotUndercut(slot, enabled),
@@ -6057,9 +6080,10 @@ function removeViewerLoadingScreen() {
       setSlotTileBusy(slot, "Preparing");
       // Parsing blocks the main thread, so let the tile paint "Preparing…" first.
       await new Promise((resolve) => requestAnimationFrame(resolve));
-      addDesignSlotMesh(slot, file.name, atob(base64));
+      const mesh = addDesignSlotMesh(slot, file.name, atob(base64));
       // Same as the initial load: survey rides with the mesh, not the button.
-      ensureSlotUndercutGeometry(slot, base64);
+      const surveyPromise = ensureSlotUndercutGeometry(slot, base64);
+      enableDefaultSlotUndercut(slot, mesh, surveyPromise);
       activateDesignView();
       statusEl.textContent = `${file.name} uploaded.`;
     } catch (error) {
@@ -6577,10 +6601,11 @@ function removeViewerLoadingScreen() {
           await new Promise((resolve) => requestAnimationFrame(resolve));
 
           await materialReady;
-          addDesignSlotMesh(slot, slotItem.filename, atob(slotItem.data));
+          const mesh = addDesignSlotMesh(slot, slotItem.filename, atob(slotItem.data));
           // Fire the undercut survey now, alongside the mesh — not gated behind
           // the undercut button (see ensureSlotUndercutGeometry).
-          ensureSlotUndercutGeometry(slot, slotItem.data);
+          const surveyPromise = ensureSlotUndercutGeometry(slot, slotItem.data);
+          enableDefaultSlotUndercut(slot, mesh, surveyPromise);
 
           console.log(`✅ Loaded STL from slot ${slot}`);
           anyLoaded = true;
