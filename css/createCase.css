@@ -1021,6 +1021,83 @@
 
 .uam-footer .cm-btn { min-width: 120px; }
 
+@media (max-width: 640px) {
+  #userAccessModal {
+    align-items: flex-end;
+    padding: 12px;
+    box-sizing: border-box;
+  }
+
+  #userAccessModal .modal-content.uam-modal {
+    width: 100%;
+    max-width: none;
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+    border-radius: 14px;
+  }
+
+  .uam-header {
+    padding: 16px 16px 14px;
+  }
+
+  .uam-search-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 14px 16px 12px;
+    background: var(--panel);
+    flex-shrink: 0;
+  }
+
+  .uam-search-input {
+    min-height: 44px;
+    padding: 11px 12px 11px 36px;
+    font-size: 16px;
+    line-height: 20px;
+    color: #0f172a;
+    caret-color: var(--primary-dark);
+    background: #fff;
+  }
+
+  .uam-add-btn {
+    min-width: 76px;
+    min-height: 44px;
+    padding-inline: 14px;
+  }
+
+  .uam-list-section {
+    padding: 4px 16px 8px;
+    overflow: hidden;
+  }
+
+  .uam-list {
+    max-height: none;
+    overscroll-behavior: contain;
+  }
+
+  .uam-footer {
+    padding: 12px 16px max(14px, env(safe-area-inset-bottom));
+    margin-top: 4px;
+    flex-shrink: 0;
+  }
+
+  .uam-footer .cm-btn {
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 360px) {
+  .uam-search-row {
+    grid-template-columns: 1fr;
+  }
+
+  .uam-add-btn {
+    width: 100%;
+  }
+}
+
 /* Re-asserted after the unconditional .uploaded-model rule above, which was
    overriding the mobile height. */
 @media (max-width: 860px) {
