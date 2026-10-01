@@ -1,7 +1,7 @@
 // Question → topic matching for the help assistant. Pure functions only, so the
 // whole ranking path is unit testable; helpBot.js owns the panel.
 
-import { HELP_TOPICS, TOPIC_BY_ID } from "./helpTopics.js";
+import { HELP_TOPICS, TOPIC_BY_ID, stepText } from "./helpTopics.js";
 
 // Dropped before scoring: common in questions, useless for discriminating.
 const STOPWORDS = new Set([
@@ -75,7 +75,7 @@ function topicIndex(topic) {
       value: {
         keywords: new Set(canonicalize((topic.keywords || []).map((k) => normalize(k)))),
         title: new Set(canonicalize(tokenize(topic.title))),
-        body: new Set(canonicalize(tokenize([topic.answer, ...(topic.steps || [])].join(" ")))),
+        body: new Set(canonicalize(tokenize([topic.answer, ...(topic.steps || []).map(stepText)].join(" ")))),
       },
       enumerable: false,
     });

@@ -12,6 +12,7 @@
 //               Omit when the reveal changes a mode the user keeps (the padlock)
 //   optional    marks a control that only exists in some states, so an expected
 //               skip is distinguishable from an accidental one
+//   media       optional media query; the step is dropped where it doesn't match
 //   topic       optional help-topic id, offered as "Read more"
 //
 // Steps whose target never appears are dropped at start, so a tour stays coherent

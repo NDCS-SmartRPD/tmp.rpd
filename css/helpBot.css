@@ -267,41 +267,7 @@
   background: #23916c;
 }
 
-/* --------------------------------------------------------------- highlight */
-
-/* Dims the page around the "Show me" target — a huge box-shadow spread paints
-   outside this rect. Not a modal: pointer-events:none lets clicks through. */
-.hb-spotlight {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  width: 0;
-  height: 0;
-  z-index: 1240;
-  border-radius: 10px;
-  /* Same veil as the tour's .pt-mask, so a "Show me" and a tour step dim the
-     page to the same depth. */
-  box-shadow: 0 0 0 9999px rgba(11, 18, 28, 0.62);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.4s ease, top 0.3s ease, left 0.3s ease, width 0.3s ease, height 0.3s ease;
-}
-.hb-spotlight.is-visible {
-  opacity: 1;
-}
-
-/* "Show me" ring on the described control, matching the tour's .pt-target.
-   box-shadow rather than outline/border so it never shifts the page's layout. */
-.hb-highlight {
-  border-radius: 8px;
-  position: relative;
-  z-index: 1250;
-  box-shadow: 0 0 0 3px var(--hb-primary, #3bae95);
-}
 @media (prefers-reduced-motion: reduce) {
-  .hb-spotlight {
-    transition: opacity 0.4s ease;
-  }
   .hb-panel,
   .hb-backdrop {
     transition: none;

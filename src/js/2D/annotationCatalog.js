@@ -151,6 +151,7 @@ export function renderComponentCatalog() {
   const itemsEl = document.getElementById("componentItems");
   if (!itemsEl) return;
   itemsEl.innerHTML = "";
+  itemsEl.dataset.tab = state.selectedTab;
 
   if (state.selectedTab === "case-note") {
     itemsEl.appendChild(createCaseNoteForm());

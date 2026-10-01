@@ -22,6 +22,15 @@ const SOURCE_FILES = [
   "src/js/2D/preview3D.js",
   "src/js/2D/preview3DSurvey.js",
   "src/js/2D/annotationCatalog.js",
+  // What a help walkthrough waits on and counts clicks on: the placement marks,
+  // the lock state, the quick-pick and remove lists, the status menu.
+  "src/js/2D/2DAnnotation.js",
+  "src/js/2D/annotationLocks.js",
+  "src/js/2D/annotationRender.js",
+  "src/js/2D/annotationVisuals.js",
+  "src/js/2D/clinicalInfo.js",
+  "src/js/shared/selectMenu.js",
+  "src/js/shared/changePassword.js",
   "src/viewer3d/index.js",
 ];
 

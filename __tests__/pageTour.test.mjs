@@ -13,7 +13,7 @@
  */
 import { jest } from "@jest/globals";
 import { PAGE_TOURS, TOUR_VERSION, tourFor, tourStorageKey } from "../src/js/shared/tourSteps.js";
-import { TOPIC_BY_ID, PAGE_LABELS } from "../src/js/shared/helpTopics.js";
+import { TOPIC_BY_ID, PAGE_LABELS, walkthroughFor } from "../src/js/shared/helpTopics.js";
 import { undefinedSelectorParts } from "./helpers/appSources.mjs";
 
 const ALL_STEPS = Object.entries(PAGE_TOURS).flatMap(([pageId, steps]) =>
@@ -50,6 +50,9 @@ beforeAll(async () => {
   global.cancelAnimationFrame = (id) => clearTimeout(id);
   // jsdom implements no layout, so it has no scrollIntoView at all.
   Element.prototype.scrollIntoView = () => {};
+  // Desktop-wide: fixtures sit up to ~1400px across, and a control wholly past
+  // the edge of the window counts as off screen.
+  Object.defineProperty(window, "innerWidth", { value: 1440, writable: true, configurable: true });
   tour = await import("../src/js/shared/pageTour.js");
 });
 
@@ -838,5 +841,620 @@ describe("opening a container to reach its control", () => {
   test("the step is dropped when the opener itself is missing", async () => {
     // No case selected — no detail panel, so there is no way in.
     expect(await walkTitles("case_list", 20)).not.toContain("Case actions");
+  });
+});
+
+// "Show me" in the help panel walks one answer's steps through this same engine,
+// using the real topic data. Unlike the page tour it is done on the page: the lit
+// control works, and using it moves the walk on. It finishes where it ends — what
+// the last step opened stays open to carry on in — and it is not the page's tour,
+// so it never marks that as seen.
+describe("walking one help answer", () => {
+  const logOut = () => walkthroughFor(TOPIC_BY_ID.get("log-out"));
+  const hint = () => ($("ptHint").hidden ? null : $("ptHint").textContent);
+  const stepNumber = () => Number($("ptCount").textContent.match(/^Step (\d+)/)[1]);
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  // A press moves the walk on once the page has handled it, and the next card
+  // renders after that.
+  const settle = async () => {
+    await flush();
+    await flush();
+  };
+
+  // The footer menu opens the sidebar, whose backdrop shuts it again.
+  function buildMenuPage() {
+    buildPage(
+      `${FIXTURE}
+       <div id="appSidebar">
+         <div class="app-sidebar-backdrop"></div>
+         <button id="sidebarLogoutBtn">Logout</button>
+       </div>`,
+      "#createCaseBtn, .cm-stat-filters, #searchCaseInput, .cm-table thead, #notificationBtn, #footerMenuBtn",
+      "/src/pages/case_list.html"
+    );
+    const item = $("sidebarLogoutBtn");
+    const backdrop = document.querySelector("#appSidebar .app-sidebar-backdrop");
+    const shut = () => [item, backdrop].forEach((el) => (el.getClientRects = () => []));
+    shut();
+    let closes = 0;
+    $("footerMenuBtn").addEventListener("click", () => {
+      makeVisible(item, { top: 500, left: 20, width: 200, height: 40 });
+      makeVisible(backdrop, { top: 0, left: 0, width: 1280, height: 800 });
+    });
+    backdrop.addEventListener("click", () => {
+      closes += 1;
+      shut();
+    });
+    return { item, closes: () => closes };
+  }
+
+  const walk = async (steps) => {
+    const started = tour.startWalkthrough(steps);
+    await flush();
+    return started;
+  };
+
+  test("runs the answer's steps under its title, with Close in place of Skip tour", async () => {
+    buildMenuPage();
+    expect(await walk(logOut())).toBe(true);
+    expect(currentTitle()).toBe("Log out");
+    expect($("ptText").textContent).toBe("Select the menu button in the footer bar.");
+    expect(stepTotal()).toBe(2);
+    expect($("ptSkip").textContent).toBe("Close");
+  });
+
+  test("the lit control works, and using it moves the walk on — there is no Next", async () => {
+    const { item } = buildMenuPage();
+    await walk(logOut());
+    expect($("ptNext").hidden).toBe(true);
+    expect($("ptBack").hidden).toBe(true);
+    expect(hint()).toBe("Click the highlighted area to continue.");
+
+    $("footerMenuBtn").click(); // the page's own handler opens the sidebar
+    await settle();
+    expect(stepNumber()).toBe(2);
+    expect(item.classList.contains("pt-target")).toBe(true);
+    expect(hint()).toBe("Click the highlighted area to finish.");
+  });
+
+  test("the last press does its job and finishes, leaving open what it opened", async () => {
+    const { item, closes } = buildMenuPage();
+    let loggedOut = 0;
+    item.addEventListener("click", () => (loggedOut += 1));
+    await walk(logOut());
+    $("footerMenuBtn").click();
+    await settle();
+
+    item.click();
+    await settle();
+    expect(loggedOut).toBe(1);
+    expect(tour.isTourRunning()).toBe(false);
+    expect(closes()).toBe(0);
+  });
+
+  test("Close puts back a panel the walk opened itself", async () => {
+    const { item, closes } = buildMenuPage();
+    // Starting on the sidebar item, the walk presses the menu button for it.
+    await walk(logOut().slice(1));
+    await flush();
+    expect(item.classList.contains("pt-target")).toBe(true);
+    $("ptSkip").click();
+    expect(closes()).toBe(1);
+  });
+
+  test("Close leaves alone a panel the user opened", async () => {
+    const { closes } = buildMenuPage();
+    await walk(logOut());
+    $("footerMenuBtn").click();
+    await settle();
+    $("ptSkip").click();
+    expect(closes()).toBe(0);
+  });
+
+  test("a click outside the lit control never reaches the page, and points back at it", async () => {
+    buildMenuPage();
+    let reached = 0;
+    const listener = () => (reached += 1);
+    document.addEventListener("click", listener);
+    await walk(logOut());
+
+    $("ptBlock").click();
+    document.removeEventListener("click", listener);
+    expect(reached).toBe(0);
+    expect(stepNumber()).toBe(1);
+    expect($("ptMask").classList.contains("is-nudged")).toBe(true);
+  });
+
+  test("keys stay with the page; Escape still closes the walk", async () => {
+    buildMenuPage();
+    await walk(logOut());
+    for (const key of ["Enter", "ArrowRight"]) {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+    }
+    await settle();
+    expect(stepNumber()).toBe(1);
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(tour.isTourRunning()).toBe(false);
+  });
+
+  // A press in the sidebar shuts the sidebar, taking the next step's item with it.
+  test("a panel that closes under its step is opened again, once; twice steps back", async () => {
+    const { item } = buildMenuPage();
+    const backdrop = document.querySelector("#appSidebar .app-sidebar-backdrop");
+    await walk(logOut());
+    $("footerMenuBtn").click();
+    await settle();
+    expect(stepNumber()).toBe(2);
+
+    backdrop.click();
+    await wait(600);
+    expect(stepNumber()).toBe(2);
+    expect(item.classList.contains("pt-target")).toBe(true);
+
+    backdrop.click();
+    await wait(600);
+    expect(stepNumber()).toBe(1);
+    expect($("footerMenuBtn").classList.contains("pt-target")).toBe(true);
+  });
+
+  test("is not the page's tour: nothing is marked seen, and the tour keeps its own Skip", async () => {
+    buildMenuPage();
+    await walk(logOut());
+    tour.endTour();
+    expect(localStorage.getItem(tourStorageKey("case_list"))).toBeNull();
+
+    expect(await tour.maybeAutoStartTour({ pageId: "case_list" })).toBe(true);
+    expect($("ptSkip").textContent).toBe("Skip tour");
+    expect($("ptNext").hidden).toBe(false);
+  });
+
+  // Answers aren't tied to one page the way a page's tour is. On the case list
+  // the footer menu is right there, but the sidebar it opens has no Version
+  // History entry — opening it would light nothing.
+  test("drops a step for a control this page lacks, though its reveal is here", async () => {
+    buildMenuPage();
+    const steps = walkthroughFor(TOPIC_BY_ID.get("changes-not-saving"));
+    expect(steps.filter((s) => s.selector)).toHaveLength(2);
+    // Both of its anchored steps are sidebar items this page doesn't have.
+    expect(tour.canStartWalkthrough(steps)).toBe(false);
+  });
+
+  // The sidebar slides in: the spotlight is first placed mid-slide, and the
+  // slide fires no scroll or resize to say it has moved.
+  test("the spotlight follows a control that slides into place", async () => {
+    const { item } = buildMenuPage();
+    await walk(logOut());
+    $("footerMenuBtn").click();
+    await settle();
+    expect($("ptMask").style.left).toBe("14px"); // placed where the slide began (20 - 6)
+
+    makeVisible(item, { top: 500, left: 60, width: 200, height: 40 });
+    document.body.dispatchEvent(new Event("transitionend", { bubbles: true }));
+    await flush();
+    expect($("ptMask").style.left).toBe("54px");
+  });
+
+  test("is refused, and not offered, when none of its controls is on this page", () => {
+    document.body.innerHTML = "<div>nothing the answer points at</div>";
+    expect(tour.canStartWalkthrough(logOut())).toBe(false);
+    expect(tour.startWalkthrough(logOut())).toBe(false);
+    expect(tour.isTourRunning()).toBe(false);
+  });
+
+  // Typing, and several drops or picks, can't be read off one click — nor kept
+  // inside the spotlight, since a field opens its calendar or suggestions anywhere.
+  test("a typing step keeps Next, and leaves the whole page usable meanwhile", async () => {
+    buildPage(
+      `${FIXTURE}
+       <div id="createCaseForm"><div class="cc-form-grid"><input id="caseName" /></div></div>
+       <div id="createCaseUpload">
+         <div id="uploadedJawModels"></div>
+         <div id="addRefImageBtn"></div>
+         <button class="cancel-btn">Cancel</button>
+         <button class="save-btn">Save</button>
+       </div>`,
+      "#createCaseBtn",
+      "/src/pages/case_list.html"
+    );
+    const form =
+      "#createCaseForm .cc-form-grid, #caseName, #uploadedJawModels, #addRefImageBtn, #createCaseUpload .cancel-btn, #createCaseUpload .save-btn";
+    $("createCaseBtn").addEventListener("click", () => showAll(form));
+
+    await walk(walkthroughFor(TOPIC_BY_ID.get("create-case")));
+    $("createCaseBtn").click();
+    await settle();
+    expect(stepNumber()).toBe(2);
+    expect($("ptNext").hidden).toBe(false);
+    expect(hint()).toBeNull();
+    expect($("page-tour").classList.contains("is-free")).toBe(true);
+
+    $("caseName").click();
+    await settle();
+    expect(stepNumber()).toBe(2);
+    await next();
+    expect(stepNumber()).toBe(3);
+  });
+
+  // Extra 3D is too heavy to open for someone who only asked how.
+  test("a look-only step moves on without pressing its control", async () => {
+    buildPage(`<button id="previewTabExtras">Extra 3D</button>`, "#previewTabExtras", "/src/pages/2DAnnotation.html");
+    let opened = 0;
+    $("previewTabExtras").addEventListener("click", () => (opened += 1));
+    await walk(walkthroughFor(TOPIC_BY_ID.get("extra-reference-stl")));
+
+    $("previewTabExtras").click();
+    await settle();
+    expect(opened).toBe(0);
+    expect(stepNumber()).toBe(2);
+  });
+
+  // Undo is disabled with nothing to undo, and a disabled button gets no click.
+  test("a disabled control gets Next in place of the hint", async () => {
+    buildPage(`<button id="undoWorkflowBtn" disabled>Undo</button>`, "#undoWorkflowBtn", "/src/pages/2DAnnotation.html");
+    const [undo] = walkthroughFor(TOPIC_BY_ID.get("remove-component")).slice(-1);
+    await walk([undo]);
+    await flush();
+    expect(hint()).toBeNull();
+    expect($("ptNext").textContent).toBe("Done");
+    expect($("ptNext").hidden).toBe(false);
+  });
+
+  // A picker is used by picking from it — its change — not by the click that opens it.
+  test("a select moves the walk on when a new option is picked", async () => {
+    buildPage(
+      `<select id="searchMode"><option>name</option><option>date</option></select><input id="searchCaseInput" />`,
+      "#searchMode, #searchCaseInput",
+      "/src/pages/case_list.html"
+    );
+    await walk(walkthroughFor(TOPIC_BY_ID.get("find-case")));
+    $("searchMode").click();
+    await settle();
+    expect(stepNumber()).toBe(1);
+
+    $("searchMode").dispatchEvent(new Event("change", { bubbles: true }));
+    await settle();
+    expect(stepNumber()).toBe(2);
+  });
+
+  describe("picking a case", () => {
+    // On a phone the detail panel is parked past the right edge until a row is
+    // picked; its controls have boxes, just not on screen.
+    function buildCaseRows() {
+      buildPage(
+        `<table class="cm-table"><tbody>
+           <tr class="cm-row">
+             <td class="cm-td-name">Case A</td>
+             <td class="cm-td-status"><span class="cm-pill" role="button" data-action="edit-status">Draft</span></td>
+             <td><button class="cm-row-icon" data-action="delete">Delete</button></td>
+           </tr>
+         </tbody></table>
+         <aside class="cm-detail">
+           <button class="dropdown-toggle">☰</button>
+           <div id="caseDropdown"><button id="renameBtn">Rename</button></div>
+         </aside>`,
+        ".cm-table tbody tr, .cm-td-name, .cm-pill, .cm-row-icon",
+        "/src/pages/case_list.html"
+      );
+      const toggle = document.querySelector(".cm-detail .dropdown-toggle");
+      const parked = { top: 40, left: 1500, width: 40, height: 40 };
+      makeVisible(toggle, parked);
+      makeVisible($("renameBtn"), parked);
+      const row = document.querySelector(".cm-row");
+      row.addEventListener("click", () => {
+        row.classList.add("is-active");
+        makeVisible(toggle, { top: 40, left: 900, width: 40, height: 40 });
+      });
+      return { row, toggle };
+    }
+
+    test("keeps the steps a row click brings on screen, and starts at the row", async () => {
+      const { row, toggle } = buildCaseRows();
+      await walk(walkthroughFor(TOPIC_BY_ID.get("rename-case")));
+      expect(stepTotal()).toBe(3);
+      expect(row.classList.contains("pt-target")).toBe(true);
+
+      document.querySelector(".cm-td-name").click();
+      await settle();
+      expect(stepNumber()).toBe(2);
+      expect(toggle.classList.contains("pt-target")).toBe(true);
+    });
+
+    test("the buttons inside a row neither pick the case nor do their own job meanwhile", async () => {
+      const { row } = buildCaseRows();
+      let deleted = 0;
+      document.querySelector('[data-action="delete"]').addEventListener("click", () => (deleted += 1));
+      await walk(walkthroughFor(TOPIC_BY_ID.get("rename-case")));
+
+      document.querySelector('[data-action="delete"]').click();
+      await settle();
+      expect(deleted).toBe(0);
+      expect(row.classList.contains("is-active")).toBe(false);
+      expect(stepNumber()).toBe(1);
+    });
+  });
+
+  // Mouse and touch differ in the 2D design, so each case sets one.
+  const pointer = (coarse) => (query) => ({
+    media: query,
+    matches: query === "(pointer: coarse)" ? coarse : query === "not all and (pointer: coarse)" && !coarse,
+  });
+
+  describe("in the 2D design", () => {
+    beforeEach(() => {
+      window.matchMedia = pointer(false);
+    });
+    afterEach(() => {
+      delete window.matchMedia;
+    });
+
+    // The padlock shows the Components panel; the CLASPS tab fills the list; a
+    // pick lights the dots, and a dot places the clasp.
+    function build2D({ locked = false } = {}) {
+      buildPage(
+        `<button id="jawLockToggleBtn">Lock</button>
+         <div id="componentTabs"><button class="component-tab" data-tab="clasps">CLASPS</button></div>
+         <div id="componentItems" data-tab="mesh"></div>
+         <div class="jaw-combined-canvas">
+           <div class="tooth" data-tooth-id="16"></div>
+           <div class="tooth-suggestions"></div>
+         </div>`,
+        "#jawLockToggleBtn, .jaw-combined-canvas, .tooth",
+        "/src/pages/2DAnnotation.html"
+      );
+      const padlock = $("jawLockToggleBtn");
+      const items = $("componentItems");
+      const marks = document.querySelector(".tooth-suggestions");
+      const lock = () => {
+        padlock.classList.add("is-locked");
+        showAll("#componentTabs, .component-tab, #componentItems");
+      };
+      if (locked) lock();
+      padlock.addEventListener("click", lock);
+      document.querySelector(".component-tab").addEventListener("click", () => {
+        items.dataset.tab = "clasps";
+        items.innerHTML = '<button class="component-item">Retainer</button>';
+        showAll(".component-item");
+      });
+      items.addEventListener("click", (e) => {
+        if (!e.target.closest(".component-item")) return;
+        marks.innerHTML = '<div class="clasp-suggestion-group"></div>';
+        showAll(".clasp-suggestion-group");
+      });
+      const placed = [];
+      marks.addEventListener("click", (e) => {
+        if (e.target.closest(".clasp-suggestion-group")) placed.push("clasp");
+      });
+      let archClicks = 0;
+      document.querySelector(".jaw-combined-canvas").addEventListener("click", () => (archClicks += 1));
+      return { padlock, items, marks, placed, archClicks: () => archClicks };
+    }
+
+    const clasps = () => walkthroughFor(TOPIC_BY_ID.get("clasps"));
+
+    async function toPlacement(page) {
+      await walk(clasps());
+      page.padlock.click();
+      await settle();
+      document.querySelector(".component-tab").click();
+      await settle();
+      document.querySelector(".component-item").click();
+      await settle();
+    }
+
+    test("goes padlock, tab, clasp, then the arch — and ends by placing it", async () => {
+      const page = build2D();
+      await walk(clasps());
+      expect(stepTotal()).toBe(4);
+      expect(page.padlock.classList.contains("pt-target")).toBe(true);
+
+      page.padlock.click();
+      await settle();
+      expect(document.querySelector(".component-tab").classList.contains("pt-target")).toBe(true);
+
+      document.querySelector(".component-tab").click();
+      await settle();
+      expect(page.items.classList.contains("pt-target")).toBe(true);
+
+      // Beside the items rather than on one: nothing is picked, so nothing moves.
+      page.items.click();
+      await settle();
+      expect(stepNumber()).toBe(3);
+
+      document.querySelector(".component-item").click();
+      await settle();
+      expect(stepNumber()).toBe(4);
+      expect(document.querySelector(".jaw-combined-canvas").classList.contains("pt-target")).toBe(true);
+
+      document.querySelector(".clasp-suggestion-group").click();
+      await settle();
+      expect(page.placed).toEqual(["clasp"]);
+      expect(tour.isTourRunning()).toBe(false);
+    });
+
+    // A click on the arch between the dots would clear the pick, and the dots with it.
+    test("only a dot counts on the arch; the rest of it keeps still", async () => {
+      const page = build2D();
+      await toPlacement(page);
+      document.querySelector(".tooth").click();
+      await settle();
+      expect(page.archClicks()).toBe(0);
+      expect(tour.isTourRunning()).toBe(true);
+      expect(stepNumber()).toBe(4);
+    });
+
+    test("steps back to the list when the dots go", async () => {
+      const page = build2D();
+      await toPlacement(page);
+      page.marks.innerHTML = "";
+      await wait(600);
+      expect(stepNumber()).toBe(3);
+      expect(page.items.classList.contains("pt-target")).toBe(true);
+    });
+
+    test("the padlock is left out once the arches are locked — pressing it would unlock them", async () => {
+      build2D({ locked: true });
+      await walk(clasps());
+      expect(stepTotal()).toBe(3);
+      expect(document.querySelector(".component-tab").classList.contains("pt-target")).toBe(true);
+    });
+
+    test("removing a component: a right-click, then a pick from the list it opens", async () => {
+      buildPage(
+        `<button id="jawLockToggleBtn" class="is-locked">Lock</button>
+         <div class="jaw-combined-canvas"><div class="tooth" data-tooth-id="16"></div></div>
+         <div id="removeComponentDialog">
+           <div class="remove-component-dialog-panel">
+             <button class="remove-component-item-btn">Retainer</button>
+           </div>
+         </div>
+         <button id="undoWorkflowBtn">Undo</button>`,
+        "#jawLockToggleBtn, .jaw-combined-canvas, .tooth, #undoWorkflowBtn",
+        "/src/pages/2DAnnotation.html"
+      );
+      const tooth = document.querySelector(".tooth");
+      let added = 0;
+      tooth.addEventListener("click", () => (added += 1));
+      tooth.addEventListener("contextmenu", () => showAll(".remove-component-dialog-panel"));
+
+      await walk(walkthroughFor(TOPIC_BY_ID.get("remove-component")));
+      expect(stepTotal()).toBe(3);
+      expect(hint()).toBe("Right-click in the highlighted area to continue.");
+
+      tooth.click(); // a left-click adds a component — not this step
+      await settle();
+      expect(added).toBe(0);
+      expect(stepNumber()).toBe(1);
+
+      tooth.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+      await settle();
+      expect(stepNumber()).toBe(2);
+
+      document.querySelector(".remove-component-item-btn").click();
+      await settle();
+      expect(stepNumber()).toBe(3);
+    });
+
+    // With no mesh near, no tooth lights up for a bar — the walk must not strand the user.
+    test("with nothing to press in the lit control, Done stands in until something is", async () => {
+      buildPage(
+        `<button id="jawLockToggleBtn" class="is-locked">Lock</button>
+         <div class="jaw-combined-canvas"><div class="tooth" data-tooth-id="16"></div></div>`,
+        "#jawLockToggleBtn, .jaw-combined-canvas, .tooth",
+        "/src/pages/2DAnnotation.html"
+      );
+      const [place] = walkthroughFor(TOPIC_BY_ID.get("bars")).slice(-1);
+      await walk([place]);
+      await flush();
+      expect($("ptNext").hidden).toBe(false);
+      expect($("ptNext").textContent).toBe("Done");
+      expect(hint()).toBeNull();
+
+      document.querySelector(".tooth").classList.add("tooth-bar-suggestible");
+      await wait(300);
+      expect($("ptNext").hidden).toBe(true);
+      expect(hint()).toBe("Click the highlighted area to finish.");
+    });
+
+    test("waits on the tooth quick-pick on touch, moving on once the dots show", async () => {
+      window.matchMedia = pointer(true);
+      const page = build2D({ locked: true });
+      await walk(clasps());
+      expect(stepTotal()).toBe(2);
+      expect(hint()).toBe("Tap the highlighted area to continue.");
+
+      document.querySelector(".tooth").click(); // opens the quick-pick, above the walk
+      await settle();
+      expect(stepNumber()).toBe(1);
+
+      page.marks.innerHTML = '<div class="clasp-suggestion-group"></div>';
+      showAll(".clasp-suggestion-group");
+      await wait(300);
+      expect(stepNumber()).toBe(2);
+    });
+  });
+
+  // Right-click is for a mouse and the eraser for touch, so each device is walked
+  // through its own step only.
+  describe("steps for one kind of input", () => {
+    afterEach(() => {
+      delete window.matchMedia;
+    });
+
+    async function removeComponentTexts(coarse) {
+      window.matchMedia = pointer(coarse);
+      buildPage(
+        `<div class="jaw-combined-canvas"></div>
+         <button id="jawLockToggleBtn">Lock</button>
+         <button id="removeComponentModeBtn">Eraser</button>
+         <button id="undoWorkflowBtn">Undo</button>`,
+        ".jaw-combined-canvas, #jawLockToggleBtn, #removeComponentModeBtn, #undoWorkflowBtn",
+        "/src/pages/2DAnnotation.html"
+      );
+      await walk(walkthroughFor(TOPIC_BY_ID.get("remove-component")));
+      const texts = [];
+      for (let i = 0; i < 10; i += 1) {
+        texts.push($("ptText").textContent);
+        if (onLastStep()) break;
+        await next();
+      }
+      return texts;
+    }
+
+    test("a mouse is shown right-click and not the eraser", async () => {
+      const texts = await removeComponentTexts(false);
+      expect(texts.some((t) => /right-click/.test(t))).toBe(true);
+      expect(texts.some((t) => /eraser/.test(t))).toBe(false);
+    });
+
+    test("touch is shown the eraser and not right-click", async () => {
+      const texts = await removeComponentTexts(true);
+      expect(texts.some((t) => /eraser/.test(t))).toBe(true);
+      expect(texts.some((t) => /right-click/.test(t))).toBe(false);
+    });
+  });
+
+  // The panel side of the hand-off: helpBot.js offers Show me only when there is
+  // something to walk, closes itself first, and keeps the conversation.
+  describe("from the help panel", () => {
+    let help;
+    let helpNode = null;
+    beforeAll(async () => {
+      help = await import("../src/js/shared/helpBot.js");
+    });
+    const reattachHelp = () => {
+      helpNode = document.getElementById("help-bot") || helpNode;
+      if (helpNode && !helpNode.isConnected) document.body.appendChild(helpNode);
+    };
+    const showMeButton = () =>
+      [...document.querySelectorAll("#help-bot .hb-msg.is-bot")].at(-1)
+        ?.querySelector(".hb-actions .hb-action");
+
+    test("Show me runs the walkthrough and the conversation survives it", async () => {
+      buildMenuPage();
+      reattachHelp();
+      help.openHelpBot({ topicId: "log-out" });
+      reattachHelp();
+      await flush(); // the panel's open transition
+
+      expect(showMeButton()?.textContent).toBe("Show me");
+      showMeButton().click();
+      await flush();
+
+      expect(tour.isTourRunning()).toBe(true);
+      expect(currentTitle()).toBe("Log out");
+      expect($("help-bot").classList.contains("is-open")).toBe(false);
+
+      // Past the panel's slide-out, which is when a normal close would clear it.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(document.querySelectorAll("#help-bot .hb-msg").length).toBeGreaterThan(1);
+    });
+
+    test("no Show me when nothing the answer points at is on this page", () => {
+      buildPage("<div>nothing here</div>", "div", "/src/pages/case_list.html");
+      reattachHelp();
+      help.openHelpBot({ topicId: "log-out" });
+      expect(showMeButton() ?? null).toBeNull();
+    });
   });
 });

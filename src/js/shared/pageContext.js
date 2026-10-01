@@ -28,12 +28,14 @@ export function appRoot() {
 }
 
 // Link a css/ stylesheet on first use, so a page that never opens the panel
-// never fetches its styles.
+// never fetches its styles. Returns the <link>, for callers that must wait for it.
 export function ensureStylesheet(cssFile) {
   const href = new URL(`${appRoot()}css/${cssFile}`, window.location.href).href;
-  if (document.querySelector(`link[href="${href}"]`)) return;
+  const existing = document.querySelector(`link[href="${href}"]`);
+  if (existing) return existing;
   const link = document.createElement("link");
   link.rel = "stylesheet";
   link.href = href;
   document.head.appendChild(link);
+  return link;
 }

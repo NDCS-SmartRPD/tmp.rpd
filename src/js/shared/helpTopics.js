@@ -3,14 +3,29 @@
 //
 // Fields:
 //   id/title/page  slug, answer heading, owning page (see PAGE_LABELS)
-//   selector       the control the topic is about, NEVER the button that opens
-//                  the view containing it — that is what `reveal` is for
-//   reveal         control that opens the view `selector` lives in; "Show me"
-//                  clicks it, waits, then highlights. Only when target is hidden
 //   keywords       words a user might type; weighted highest by the matcher
 //   phrases        whole-question forms; exact containment wins outright
 //   answer/steps   prose, plus optional ordered instructions
 //   related        ids offered as follow-up chips
+//
+// "Show me" walks the steps as a mini tour, one card each, done on the real
+// page: using the lit control does what it always does and moves the walk on.
+// A step is a string, or { text, selector, reveal, dismiss, media } to spotlight
+// a control — the tour-step fields of tourSteps.js. `selector` is the control
+// the step is about, NEVER the button that opens the view it is in: that is what
+// `reveal` is for. A step whose control is missing from the page's markup is
+// dropped, unless it sets `built` because its reveal creates the control. A
+// topic offers Show me only while one of its anchored steps is reachable.
+//
+// How a step is done, when not by clicking its control:
+//   next        typing, or several picks — the card's Next moves on
+//   info        only pointed at — a click moves on without pressing it
+//   advanceOn   only a click on one of these, inside the control, counts (a
+//               row, not its buttons); elsewhere in it only other controls work
+//   rightClick  a right-click counts instead
+//   requires    the control only counts as there while this shows as well
+//   follows     an earlier step puts it on screen, so it is kept without a reveal
+//   skipIf      left out while this is on screen — it is done already
 
 // Page ids → the label used in "Open <page>" buttons and greetings.
 export const PAGE_LABELS = {
@@ -39,24 +54,100 @@ export const PAGE_PATHS = {
   admin_case_list: "src/pages/admin/admin_case_list.html",
 };
 
-// The case-actions dropdown is closed by default, so topics about its items
+// The case-actions dropdown is closed by default, so steps about its items
 // point at the item and name this as their `reveal`.
 const CASE_MENU = ".cm-detail .dropdown-toggle";
 
-// The create-case view is a pair of panes hidden until Create Case is pressed,
-// so the fields inside it need the same treatment.
-const CREATE_CASE = "#createCaseBtn";
+// The selected case's row when there is one, else the first. Picking a case is
+// a click on the row itself — the pencils, pill and bin in it keep still.
+const CASE_ROW = [".cm-row.is-active", ".cm-table tbody tr"];
+const PICK_CASE = { selector: CASE_ROW, advanceOn: ".cm-row" };
+const STATUS_PILL = [".cm-row.is-active .cm-td-status .cm-pill", ".cm-td-status .cm-pill"];
+
+// The detail panel fills in (and on a phone slides in) once a case is picked,
+// which the walk has the user do first.
+const IN_DETAIL = { follows: true };
+const IN_CASE_MENU = { reveal: CASE_MENU, follows: true };
+
+// Whichever search control the Name/Date/Status picker shows; on a phone, the
+// bar the header's magnifier toggles.
+const SEARCH_BOX = {
+  selector: ["#searchCaseInput", "#dateFilterInput", "#filter-status", "#mobileSearchInput"],
+  reveal: "#mobileSearchBtn",
+  dismiss: "#mobileSearchBtn",
+};
+
+// The create-case view is a pair of panes hidden until Create Case (the + in the
+// header on a phone) is pressed. Cancel puts the list back without asking.
+const CREATE_CASE = ["#createCaseBtn", "#mobileCreateCaseBtn"];
+const IN_CREATE_CASE = { reveal: CREATE_CASE, dismiss: "#createCaseUpload .cancel-btn" };
 
 // The app sidebar slides out from the footer menu button and is closed the rest
 // of the time — including while the help panel itself is open.
 const APP_MENU = "#footerMenuBtn";
+const IN_APP_MENU = { reveal: APP_MENU, dismiss: "#appSidebar .app-sidebar-backdrop" };
 
-// The Components panel is display:none until the arches are locked, so topics
-// about anything in it name the padlock as their `reveal` — the same hand-off
-// the tour's Components step makes.
-const LOCK_ARCHES = "#jawLockToggleBtn";
+// The padlock swaps tooth selection for design mode, and each hides the other's
+// controls — so it is the `reveal` for both.
+const PADLOCK = "#jawLockToggleBtn";
+const ARCHES = ".jaw-combined-canvas";
+
+// Components go on in design mode, so a walk that places one starts at the
+// padlock — left out when the arches are locked already, as pressing it then
+// would unlock them.
+const LOCK_STEP = { text: "Lock the arches to enter design mode.", selector: PADLOCK, skipIf: `${PADLOCK}.is-locked` };
+
+// Beside the padlock up to 1200px wide, in the footer above that.
+const UNDO = ["#undoWorkflowBtn", "#footerUndoBtn"];
+
+// Touch layouts replace the Components panel with the tooth quick-pick and have
+// no right-click, so steps that need either are for a mouse only.
+const MOUSE = "not all and (pointer: coarse)";
+const TOUCH = "(pointer: coarse)";
 
 const COMPONENT_TAB = (id) => `#componentTabs .component-tab[data-tab="${id}"]`;
+const COMPONENT_LIST = (id) => `#componentItems[data-tab="${id}"]`;
+
+// Opening one Components tab, then its item list. The padlock trails the list's
+// reveal only to keep the step through the start-of-tour filter while unlocked.
+const openTab = (id, text) => ({ text, selector: COMPONENT_TAB(id), reveal: PADLOCK, media: MOUSE });
+const pickFromTab = (id, text) => ({
+  text,
+  selector: COMPONENT_LIST(id),
+  reveal: [COMPONENT_TAB(id), PADLOCK],
+  media: MOUSE,
+  built: true,
+  advanceOn: ".component-item",
+});
+
+// On touch the pick comes from the quick-pick a tapped tooth opens; it sits
+// above the walk, and the walk moves on once the pick has lit its marks.
+const PRESENT_TOOTH = ".tooth:not(.is-missing)";
+const pickOnTouch = (text) => ({ text, selector: ARCHES, advanceOn: PRESENT_TOOTH, media: TOUCH });
+
+// The picked component goes where the arch marks it: only those marks count,
+// and the walk steps back to the list if a stray click clears them.
+const placeAt = (marks, text) => ({ text, selector: ARCHES, advanceOn: marks, requires: marks });
+
+// A tab in the Components panel above 1200px, a sheet from the header's note
+// button below it; the padlock is last for the same filter reason as above.
+const IN_CASE_NOTE = {
+  reveal: [COMPONENT_TAB("case-note"), "#footerCaseNoteBtn", PADLOCK],
+  dismiss: "#caseNoteSheet .cn-sheet-close",
+  built: true,
+};
+const REMOVE_LIST = "#removeComponentDialog .remove-component-dialog-panel";
+const IN_CLINICAL_INFO = { reveal: "#openClinicalInfoBtn", dismiss: "#clinicalInfoCloseBtn" };
+const IN_NOTICEBOARD = { reveal: "#openNoticeboardBtn", dismiss: "#noticeboardCloseBtn" };
+const IN_CHAT = { reveal: "#footerChatBtn", dismiss: "#chat-widget .chat-sidebar-close" };
+
+// Opened from its sidebar item; the menu button trails for the start-of-tour
+// filter.
+const IN_CHANGE_PASSWORD = {
+  reveal: ["#sidebarChangePasswordBtn", APP_MENU],
+  dismiss: "#change-password .cp-close",
+  built: true,
+};
 
 export const HELP_TOPICS = [
   // ---------------------------------------------------------------- account
@@ -109,29 +200,38 @@ export const HELP_TOPICS = [
     id: "log-out",
     title: "Log out",
     page: null,
-    selector: "#sidebarLogoutBtn",
-    reveal: APP_MENU,
     keywords: ["log", "out", "logout", "sign", "exit", "quit", "leave", "session"],
     phrases: ["how do i log out", "how do i sign out"],
     answer:
       "Log out from the menu in the footer bar. You are asked to confirm, then returned to the sign-in page.",
-    steps: ["Select the menu button in the footer bar.", "Choose Logout and confirm."],
+    steps: [
+      { text: "Select the menu button in the footer bar.", selector: APP_MENU },
+      { text: "Choose Logout and confirm.", selector: "#sidebarLogoutBtn", ...IN_APP_MENU },
+    ],
     related: ["sign-in", "change-password"],
   },
   {
     id: "change-password",
     title: "Change your password",
     page: null,
-    selector: "#sidebarChangePasswordBtn",
-    reveal: APP_MENU,
     keywords: ["change", "password", "update", "new", "credentials", "security"],
     phrases: ["how do i change my password", "change account password"],
     answer:
       "Change Account Password in the footer menu emails a confirmation key to your registered address; enter that key with your new password to complete the change. There is no current-password field — control of your inbox is what authorises it.",
     steps: [
-      "Open the menu in the footer bar and choose Change Account Password.",
-      "Select Email me a key — a key is sent to your registered address.",
-      "Enter the key, choose a new password of at least 8 characters, and confirm it.",
+      { text: "Open the menu in the footer bar.", selector: APP_MENU },
+      { text: "Choose Change Account Password.", selector: "#sidebarChangePasswordBtn", ...IN_APP_MENU },
+      {
+        text: "Select Email me a key — a key is sent to your registered address.",
+        selector: "#cpSubmit",
+        ...IN_CHANGE_PASSWORD,
+      },
+      {
+        text: "Enter the key, choose a new password of at least 8 characters, and confirm it.",
+        selector: "#change-password .cp-dialog",
+        ...IN_CHANGE_PASSWORD,
+        next: true,
+      },
     ],
     related: ["forgot-password", "sign-in", "log-out"],
   },
@@ -141,16 +241,26 @@ export const HELP_TOPICS = [
     id: "create-case",
     title: "Create a new case",
     page: "case_list",
-    selector: "#createCaseBtn",
     keywords: ["create", "new", "case", "add", "start", "patient", "job", "make", "open"],
     phrases: ["how do i create a case", "how do i add a new case", "start a new case"],
     answer:
       "Create Case opens a form where you name the case, upload the upper and lower jaw scans, and add any reference images.",
     steps: [
-      "Select Create Case in the case-list header (the + button on a phone).",
-      "Enter the case name and any case details.",
-      "Upload the upper and lower jaw STL scans.",
-      "Add reference images if you have them, then save.",
+      { text: "Select Create Case in the case-list header (the + button on a phone).", selector: CREATE_CASE },
+      {
+        text: "Enter the case name and any case details.",
+        selector: "#createCaseForm .cc-form-grid",
+        ...IN_CREATE_CASE,
+        next: true,
+      },
+      {
+        text: "Upload the upper and lower jaw STL scans.",
+        selector: "#uploadedJawModels",
+        ...IN_CREATE_CASE,
+        next: true,
+      },
+      { text: "Add reference images if you have them.", selector: "#addRefImageBtn", ...IN_CREATE_CASE, next: true },
+      { text: "Select Save to create the case.", selector: "#createCaseUpload .save-btn", ...IN_CREATE_CASE },
     ],
     related: ["upload-jaw-scans", "reference-images", "invite-during-create", "start-case", "case-status"],
   },
@@ -158,8 +268,6 @@ export const HELP_TOPICS = [
     id: "invite-during-create",
     title: "Invite teammates while creating a case",
     page: "case_list",
-    selector: "#ccInviteInput",
-    reveal: CREATE_CASE,
     keywords: ["invite", "teammate", "user", "username", "create", "add", "share", "colleague"],
     phrases: [
       "how do i invite someone when creating a case",
@@ -169,9 +277,18 @@ export const HELP_TOPICS = [
     answer:
       "The Create Case form has its own Invite Users field — type a username and select Add (or press Enter) to queue it, and they're invited as part of creating the case. This is separate from Edit User Access, which shares a case that already exists.",
     steps: [
-      "Open Create Case.",
-      "Type a username in Invite Users and press Enter or select Add.",
-      "Repeat for each person, then save the case — they're invited together with it.",
+      { text: "Open Create Case.", selector: CREATE_CASE },
+      {
+        text: "Type a username in Invite Users and press Enter or select Add.",
+        selector: ".cc-invite-row",
+        ...IN_CREATE_CASE,
+        next: true,
+      },
+      {
+        text: "Repeat for each person, then save the case — they're invited together with it.",
+        selector: "#createCaseUpload .save-btn",
+        ...IN_CREATE_CASE,
+      },
     ],
     related: ["create-case", "user-access"],
   },
@@ -179,16 +296,24 @@ export const HELP_TOPICS = [
     id: "upload-jaw-scans",
     title: "Upload jaw scans (STL)",
     page: "case_list",
-    selector: "#uploadedJawModels",
-    reveal: CREATE_CASE,
     keywords: ["upload", "jaw", "scan", "stl", "model", "mesh", "import", "upper", "lower", "file"],
     phrases: ["how do i upload a scan", "how do i add an stl", "upload jaw model"],
     answer:
       "Jaw scans are STL files attached to a case — one for the upper jaw and one for the lower. Drag a file onto the jaw tile in the create-case form, or select the tile to browse.",
     steps: [
-      "Open Create Case, or select an existing case and use its jaw tiles.",
-      "Drag the .stl file onto the upper or lower jaw tile (or select it to browse).",
-      "Wait for the upload to finish before starting the design.",
+      { text: "Open Create Case, or select an existing case and use its jaw tiles.", selector: CREATE_CASE },
+      {
+        text: "Drag the .stl file onto the upper or lower jaw tile (or select it to browse).",
+        selector: "#uploadedJawModels",
+        ...IN_CREATE_CASE,
+        next: true,
+      },
+      {
+        text: "Wait for the upload to finish before starting the design.",
+        selector: "#uploadedJawModels",
+        ...IN_CREATE_CASE,
+        info: true,
+      },
     ],
     related: ["create-case", "reference-images", "navigate-3d"],
   },
@@ -196,16 +321,19 @@ export const HELP_TOPICS = [
     id: "reference-images",
     title: "Add reference images",
     page: "case_list",
-    selector: "#addRefImageBtn",
-    reveal: CREATE_CASE,
     keywords: ["reference", "image", "photo", "picture", "attach", "upload", "xray", "add"],
     phrases: ["how do i add a photo", "how do i attach an image", "add reference images"],
     answer:
       "Reference images are photos attached to the case — drag them onto the reference tile or select it to browse. They appear in the case detail panel, where the arrows page through them.",
     steps: [
-      "Open the case, then find the reference image tile.",
-      "Drag images onto it, or select Browse Files.",
-      "Use the ‹ › arrows above the preview to page through them.",
+      {
+        text: "Open the case, then find the reference image tile.",
+        selector: "#addRefImageBtn",
+        ...IN_CREATE_CASE,
+        info: true,
+      },
+      { text: "Drag images onto it, or select Browse Files.", selector: "#addRefImageBtn", ...IN_CREATE_CASE, next: true },
+      { text: "Use the ‹ › arrows above the preview to page through them.", selector: ".cm-image-nav", info: true },
     ],
     related: ["create-case", "upload-jaw-scans", "noticeboard"],
   },
@@ -213,15 +341,14 @@ export const HELP_TOPICS = [
     id: "find-case",
     title: "Search for a case",
     page: "case_list",
-    selector: "#searchCaseInput",
     keywords: ["search", "find", "look", "locate", "filter", "case", "name", "date", "status"],
     phrases: ["how do i find a case", "how do i search for a case", "where is my case"],
     answer:
       "The search box in the header searches by name, date or status — pick which with the selector to its left. The count beside it shows how many cases matched.",
     steps: [
-      "Choose Name, Date or Status in the picker beside the search box.",
-      "Type or select what you are looking for.",
-      "Clear the box to show every case again.",
+      { text: "Choose Name, Date or Status in the picker beside the search box.", selector: "#searchMode" },
+      { text: "Type or select what you are looking for.", ...SEARCH_BOX, next: true },
+      { text: "Clear the box to show every case again.", ...SEARCH_BOX, next: true },
     ],
     related: ["filter-by-stage", "sort-cases", "refresh-list"],
   },
@@ -229,15 +356,18 @@ export const HELP_TOPICS = [
     id: "filter-by-stage",
     title: "Filter cases by stage",
     page: "case_list",
-    selector: ".cm-stat-filters",
     keywords: ["filter", "stage", "group", "cards", "counts", "preparation", "delivery", "completed", "all"],
     phrases: ["how do i filter cases", "filter by stage", "what are the count cards"],
     answer:
       "The cards above the table group cases by stage — All Cases, Draft → 3D approved, In production → delivered, and Completed — each with a live count. Select a card to filter to it; select it again to clear.",
     steps: [
-      "Select a stage card above the case table.",
-      "The table narrows to that stage and the card stays highlighted.",
-      "Select the active card, or All Cases, to clear the filter.",
+      { text: "Select a stage card above the case table.", selector: ".cm-stat-filters", advanceOn: ".cm-stat-filter" },
+      {
+        text: "The table narrows to that stage and the card stays highlighted.",
+        selector: ".cm-stat-filters",
+        info: true,
+      },
+      { text: "Select the active card, or All Cases, to clear the filter.", selector: ".cm-stat-filter-all" },
     ],
     related: ["find-case", "case-status", "sort-cases"],
   },
@@ -245,15 +375,18 @@ export const HELP_TOPICS = [
     id: "sort-cases",
     title: "Sort the case list",
     page: "case_list",
-    selector: ".cm-table thead",
     keywords: ["sort", "order", "arrange", "column", "recent", "name", "due", "created", "owner"],
     phrases: ["how do i sort the list", "sort by due date", "order cases by name"],
     answer:
       "Select a column header to sort by it, and select it again to reverse the direction. On a phone the headers are hidden — use the Sort by picker above the list instead.",
     steps: [
-      "Select the column header you want to sort by.",
-      "Select it again to flip between ascending and descending.",
-      "On a phone, use the Sort by dropdown above the list.",
+      { text: "Select the column header you want to sort by.", selector: ".cm-table thead", advanceOn: ".cm-th-sort" },
+      {
+        text: "Select it again to flip between ascending and descending.",
+        selector: ".cm-table thead",
+        advanceOn: ".cm-th-sort",
+      },
+      { text: "On a phone, use the Sort by dropdown above the list.", selector: "#sortFieldMobile" },
     ],
     related: ["find-case", "filter-by-stage", "due-date"],
   },
@@ -261,15 +394,20 @@ export const HELP_TOPICS = [
     id: "case-status",
     title: "Change a case status",
     page: "case_list",
-    selector: ".cm-td-status .cm-pill",
     keywords: ["status", "change", "stage", "progress", "pending", "approved", "production", "delivered", "completed", "update"],
     phrases: ["how do i change the status", "how do i update case status", "what do the statuses mean"],
     answer:
       "Select the status pill on the case's row and pick a new one — no need to open the case first. The pencil beside STATUS in the detail panel does the same thing. The statuses run Draft → 2D design pending/drafted/approved → 3D design pending/drafted/approved → In production → Out for delivery → Delivered → Completed.",
     steps: [
-      "Find the case's row in the list.",
-      "Select its status pill in the Status column.",
-      "Pick the new status — it saves immediately, and the stage filters recount.",
+      { text: "Find the case's row in the list.", ...PICK_CASE },
+      { text: "Select its status pill in the Status column.", selector: STATUS_PILL },
+      {
+        text: "Pick the new status — it saves immediately, and the stage filters recount.",
+        selector: ".tsel-pop",
+        reveal: STATUS_PILL,
+        built: true,
+        advanceOn: ".tsel-item",
+      },
     ],
     related: ["filter-by-stage", "due-date", "case-instructions"],
   },
@@ -281,8 +419,10 @@ export const HELP_TOPICS = [
     phrases: ["what is the due date", "how do i set a due date", "why does due say na"],
     answer:
       "The Due column comes from the case's Date Required. Set it in the Case Note of the 2D design; a case that has never had one shows N/A.",
+    // Start Case is only pointed at: pressing it would leave the page, and the
+    // walk with it, before the steps that follow.
     steps: [
-      "Open the case in the 2D design.",
+      { text: "Open the case in the 2D design.", selector: ".start-case-button", info: true },
       "Open the Case Note tab and set Date Required.",
       "Save — the Due column on the case list picks it up.",
     ],
@@ -292,15 +432,19 @@ export const HELP_TOPICS = [
     id: "case-instructions",
     title: "Add case instructions",
     page: "case_list",
-    selector: "#caseInstructions",
     keywords: ["instructions", "notes", "comment", "brief", "request", "detail", "write", "add"],
     phrases: ["where do i write instructions", "how do i add case instructions"],
     answer:
       "The CASE INSTRUCTIONS box in the case detail panel takes free-text notes for the technician. It saves on its own — the status text beside it confirms when.",
     steps: [
-      "Select the case in the list.",
-      "Type into CASE INSTRUCTIONS in the detail panel.",
-      "Wait for the saved confirmation beside the box.",
+      { text: "Select the case in the list.", ...PICK_CASE },
+      { text: "Type into CASE INSTRUCTIONS in the detail panel.", selector: "#caseInstructions", ...IN_DETAIL, next: true },
+      {
+        text: "Wait for the saved confirmation beside the box.",
+        selector: ".cm-instructions-wrap",
+        ...IN_DETAIL,
+        info: true,
+      },
     ],
     related: ["case-note", "case-chat", "noticeboard"],
   },
@@ -308,14 +452,13 @@ export const HELP_TOPICS = [
     id: "start-case",
     title: "Open a case for design",
     page: "case_list",
-    selector: ".start-case-button",
     keywords: ["start", "open", "design", "work", "annotate", "2d", "case"],
     phrases: ["how do i start a case", "how do i open a case for design", "how do i begin designing"],
     answer:
       "Select the case, then Start Case in the detail panel — that opens the 2D design for it.",
     steps: [
-      "Select the case in the list.",
-      "Select Start Case at the bottom of the detail panel.",
+      { text: "Select the case in the list.", ...PICK_CASE },
+      { text: "Select Start Case at the bottom of the detail panel.", selector: ".start-case-button", ...IN_DETAIL },
     ],
     related: ["select-teeth", "design-mode", "share-3d-link"],
   },
@@ -323,16 +466,14 @@ export const HELP_TOPICS = [
     id: "rename-case",
     title: "Rename a case",
     page: "case_list",
-    selector: "#renameBtn",
-    reveal: CASE_MENU,
     keywords: ["rename", "name", "title", "change", "edit", "case"],
     phrases: ["how do i rename a case", "change the case name"],
     answer:
       "Renaming lives in the case-actions menu — the ☰ button beside the case name in the detail panel.",
     steps: [
-      "Select the case in the list.",
-      "Open the ☰ menu beside the case name in the detail panel.",
-      "Choose Rename, type the new name and confirm.",
+      { text: "Select the case in the list.", ...PICK_CASE },
+      { text: "Open the ☰ menu beside the case name in the detail panel.", selector: CASE_MENU, ...IN_DETAIL },
+      { text: "Choose Rename, type the new name and confirm.", selector: "#renameBtn", ...IN_CASE_MENU },
     ],
     related: ["duplicate-case", "delete-case", "case-menu"],
   },
@@ -340,14 +481,13 @@ export const HELP_TOPICS = [
     id: "case-menu",
     title: "The case actions menu",
     page: "case_list",
-    selector: CASE_MENU,
     keywords: ["menu", "actions", "options", "dropdown", "more", "kebab", "hamburger"],
     phrases: ["where are the case options", "what is the menu next to the case name"],
     answer:
       "The ☰ button beside the case name opens the case-actions menu: View Dashboard, Rename, Edit User Access, View Version History, Download Reference Images, Duplicate and Delete.",
     steps: [
-      "Select a case so the detail panel appears.",
-      "Select the ☰ button beside the case name.",
+      { text: "Select a case so the detail panel appears.", ...PICK_CASE },
+      { text: "Select the ☰ button beside the case name.", selector: CASE_MENU, ...IN_DETAIL },
     ],
     related: ["rename-case", "duplicate-case", "delete-case", "download-references", "user-access", "dashboard"],
   },
@@ -355,16 +495,14 @@ export const HELP_TOPICS = [
     id: "duplicate-case",
     title: "Duplicate a case",
     page: "case_list",
-    selector: "#duplicateBtn",
-    reveal: CASE_MENU,
     keywords: ["duplicate", "copy", "clone", "reuse", "template", "case"],
     phrases: ["how do i duplicate a case", "how do i copy a case"],
     answer:
       "Duplicate in the case-actions menu makes a copy of the case that you can work on without touching the original.",
     steps: [
-      "Select the case in the list.",
-      "Open the ☰ menu beside the case name.",
-      "Choose Duplicate.",
+      { text: "Select the case in the list.", ...PICK_CASE },
+      { text: "Open the ☰ menu beside the case name.", selector: CASE_MENU, ...IN_DETAIL },
+      { text: "Choose Duplicate.", selector: "#duplicateBtn", ...IN_CASE_MENU },
     ],
     related: ["case-menu", "rename-case", "create-case"],
   },
@@ -372,16 +510,14 @@ export const HELP_TOPICS = [
     id: "delete-case",
     title: "Delete a case",
     page: "case_list",
-    selector: "#deleteBtn",
-    reveal: CASE_MENU,
     keywords: ["delete", "remove", "erase", "bin", "trash", "case", "get", "rid"],
     phrases: ["how do i delete a case", "how do i remove a case"],
     answer:
       "Delete sits at the bottom of the case-actions menu and asks you to confirm first. Only delete a case you are sure about — it is not meant to be undone from the web app.",
     steps: [
-      "Select the case in the list.",
-      "Open the ☰ menu beside the case name.",
-      "Choose Delete and confirm.",
+      { text: "Select the case in the list.", ...PICK_CASE },
+      { text: "Open the ☰ menu beside the case name.", selector: CASE_MENU, ...IN_DETAIL },
+      { text: "Choose Delete and confirm.", selector: "#deleteBtn", ...IN_CASE_MENU },
     ],
     related: ["case-menu", "duplicate-case", "version-history", "recover-deleted-case"],
   },
@@ -389,7 +525,6 @@ export const HELP_TOPICS = [
     id: "recover-deleted-case",
     title: "Recover a deleted case",
     page: "admin_case_list",
-    selector: "#retrieveCaseBtn",
     keywords: ["recover", "restore", "deleted", "delete", "undelete", "retrieve", "admin", "bring", "back"],
     phrases: [
       "how do i recover a deleted case",
@@ -400,9 +535,9 @@ export const HELP_TOPICS = [
     answer:
       "Deleting a case is a soft delete — the case is hidden, not destroyed. An administrator can bring it back from the Admin Case List: deleted cases show struck through there, with a Retrieve the Case button to restore them. It isn't self-service for a regular user, so ask an administrator.",
     steps: [
-      "Ask an administrator to open the Admin Case List.",
-      "They select the struck-through (deleted) case.",
-      "They select Retrieve the Case to restore it.",
+      { text: "Ask an administrator to open the Admin Case List.", selector: "#caseList", info: true },
+      { text: "They select the struck-through (deleted) case.", selector: ".cm-row-deleted", advanceOn: ".cm-row" },
+      { text: "They select Retrieve the Case to restore it.", selector: "#retrieveCaseBtn", ...IN_DETAIL },
     ],
     related: ["delete-case", "admin-users"],
   },
@@ -410,16 +545,14 @@ export const HELP_TOPICS = [
     id: "download-references",
     title: "Download the reference images",
     page: "case_list",
-    selector: "#downloadReferencesBtn",
-    reveal: CASE_MENU,
     keywords: ["download", "export", "save", "reference", "image", "photo", "picture", "attachment", "file", "get"],
     phrases: ["how do i download the reference images", "get the photos back", "export reference images"],
     answer:
       "Download Reference Images in the case-actions menu saves every reference image added to the case — one file if there is a single image, a zip if there are several. The download icon on the case row includes them too, in a reference_images folder alongside the STLs and the report.",
     steps: [
-      "Select the case in the list.",
-      "Open the ☰ menu beside the case name.",
-      "Choose Download Reference Images.",
+      { text: "Select the case in the list.", ...PICK_CASE },
+      { text: "Open the ☰ menu beside the case name.", selector: CASE_MENU, ...IN_DETAIL },
+      { text: "Choose Download Reference Images.", selector: "#downloadReferencesBtn", ...IN_CASE_MENU },
     ],
     related: ["case-menu", "share-3d-link", "save-2d"],
   },
@@ -427,16 +560,14 @@ export const HELP_TOPICS = [
     id: "user-access",
     title: "Share a case with a colleague",
     page: "case_list",
-    selector: "#editUserAccessBtn",
-    reveal: CASE_MENU,
     keywords: ["share", "access", "user", "colleague", "permission", "invite", "assign", "collaborate", "owner"],
     phrases: ["how do i share a case", "how do i give someone access", "add a user to a case"],
     answer:
       "Edit User Access in the case-actions menu controls who else can open the case. Everyone with access is listed under SHARED WITH in the detail panel.",
     steps: [
-      "Select the case in the list.",
-      "Open the ☰ menu beside the case name.",
-      "Choose Edit User Access and add or remove people.",
+      { text: "Select the case in the list.", ...PICK_CASE },
+      { text: "Open the ☰ menu beside the case name.", selector: CASE_MENU, ...IN_DETAIL },
+      { text: "Choose Edit User Access and add or remove people.", selector: "#editUserAccessBtn", ...IN_CASE_MENU },
     ],
     related: ["case-menu", "share-3d-link", "admin-users", "invite-during-create"],
   },
@@ -444,15 +575,24 @@ export const HELP_TOPICS = [
     id: "share-3d-link",
     title: "Share the 3D viewer link",
     page: "case_list",
-    selector: "#view3dLinkRow",
     keywords: ["3d", "link", "share", "url", "copy", "send", "viewer", "export", "client"],
     phrases: ["how do i share the 3d view", "how do i copy the 3d link", "send the 3d viewer"],
     answer:
       "The 3D link row in the case detail panel gives you a viewer URL for the case — copy it with the copy button, or open it with the export button.",
     steps: [
-      "Select the case in the list.",
-      "Find the 3D link row at the bottom of the detail panel.",
-      "Use the copy button for the link, or the export button to open it.",
+      { text: "Select the case in the list.", ...PICK_CASE },
+      {
+        text: "Find the 3D link row at the bottom of the detail panel.",
+        selector: "#view3dLinkRow",
+        ...IN_DETAIL,
+        info: true,
+      },
+      {
+        text: "Use the copy button for the link, or the export button to open it.",
+        selector: "#view3dLinkRow",
+        ...IN_DETAIL,
+        advanceOn: "button",
+      },
     ],
     related: ["qr-code", "navigate-3d", "user-access", "share-link-privacy"],
   },
@@ -476,15 +616,22 @@ export const HELP_TOPICS = [
     id: "qr-code",
     title: "Generate a QR code for a case",
     page: "case_list",
-    selector: "#generateQrBtn",
     keywords: ["qr", "code", "scan", "phone", "mobile", "tablet", "share"],
     phrases: ["how do i generate a qr code", "open the case on my phone"],
     answer:
       "The QR button beside the 3D link turns that link into a QR code, so a phone or tablet can open the 3D viewer by scanning it.",
     steps: [
-      "Select the case in the list.",
-      "In the 3D link row, select the QR button.",
-      "Scan the code with the device you want to view on.",
+      { text: "Select the case in the list.", ...PICK_CASE },
+      { text: "In the 3D link row, select the QR button.", selector: "#generateQrBtn", ...IN_DETAIL },
+      {
+        text: "Scan the code with the device you want to view on.",
+        selector: ".cm-qr-panel",
+        reveal: "#generateQrBtn",
+        dismiss: ".cm-qr-close",
+        built: true,
+        follows: true,
+        next: true,
+      },
     ],
     related: ["share-3d-link", "navigate-3d"],
   },
@@ -492,27 +639,32 @@ export const HELP_TOPICS = [
     id: "notifications",
     title: "Check notifications",
     page: "case_list",
-    selector: "#notificationBtn",
     keywords: ["notification", "alert", "bell", "unread", "message", "update", "badge"],
     phrases: ["where are my notifications", "what is the bell icon"],
     answer:
       "The bell in the header lists your notifications, with a badge for unread ones. Mark all as read clears the badge.",
-    steps: ["Select the bell in the header.", "Read the list, or select Mark all as read."],
+    steps: [
+      { text: "Select the bell in the header.", selector: "#notificationBtn" },
+      {
+        text: "Read the list, or select Mark all as read.",
+        selector: "#notificationPopup",
+        reveal: "#notificationBtn",
+        next: true,
+      },
+    ],
     related: ["case-chat", "case-status"],
   },
   {
     id: "dashboard",
     title: "View the case dashboard",
     page: "case_list",
-    selector: "#viewDashboardBtn",
-    reveal: CASE_MENU,
     keywords: ["dashboard", "chart", "overview", "stats", "summary", "progress", "report"],
     phrases: ["how do i see the dashboard", "where are the case stats"],
     answer: "View Dashboard in the case-actions menu opens the summary view for the selected case.",
     steps: [
-      "Select the case in the list.",
-      "Open the ☰ menu beside the case name.",
-      "Choose View Dashboard.",
+      { text: "Select the case in the list.", ...PICK_CASE },
+      { text: "Open the ☰ menu beside the case name.", selector: CASE_MENU, ...IN_DETAIL },
+      { text: "Choose View Dashboard.", selector: "#viewDashboardBtn", ...IN_CASE_MENU },
     ],
     related: ["case-menu", "case-status", "version-history"],
   },
@@ -520,12 +672,11 @@ export const HELP_TOPICS = [
     id: "refresh-list",
     title: "Refresh the case list",
     page: "case_list",
-    selector: "#refreshListBtn",
     keywords: ["refresh", "reload", "update", "sync", "stale", "missing", "list"],
     phrases: ["how do i refresh the list", "my new case is not showing"],
     answer:
       "The refresh button beside the search box re-fetches the list from the server — use it when a case you expect is missing or out of date.",
-    steps: ["Select the refresh button in the header."],
+    steps: [{ text: "Select the refresh button in the header.", selector: "#refreshListBtn" }],
     related: ["find-case", "list-slow"],
   },
 
@@ -534,15 +685,24 @@ export const HELP_TOPICS = [
     id: "select-teeth",
     title: "Mark which teeth are present",
     page: "annotation_2d",
-    selector: "#selectTeethPanel",
     keywords: ["teeth", "tooth", "select", "present", "missing", "abutment", "compromised", "chart", "mark"],
     phrases: ["how do i select teeth", "how do i mark a missing tooth", "how do i set a tooth as abutment"],
     answer:
       "The 2D design starts in tooth-selection mode. Pick Presence, Abutment or Compromised in the Select Teeth panel, then select teeth on the arch to apply it.",
     steps: [
-      "Choose a marker in the Select Teeth panel (presence, abutment or compromised).",
-      "Select the teeth on the upper or lower arch to apply it.",
-      "Use Clear upper teeth / Clear lower teeth to start that arch over.",
+      {
+        text: "Choose a marker in the Select Teeth panel (presence, abutment or compromised).",
+        selector: "#selectTeethPanel",
+        reveal: PADLOCK,
+        advanceOn: ".status-btn",
+      },
+      { text: "Select the teeth on the upper or lower arch to apply it.", selector: ARCHES, next: true },
+      {
+        text: "Use Clear upper teeth / Clear lower teeth to start that arch over.",
+        selector: "#clearTopBtn",
+        reveal: PADLOCK,
+        info: true,
+      },
     ],
     related: ["design-mode", "tooth-conditions", "clear-arch"],
   },
@@ -550,15 +710,20 @@ export const HELP_TOPICS = [
     id: "design-mode",
     title: "Switch to design mode (the lock)",
     page: "annotation_2d",
-    selector: "#jawLockToggleBtn",
     keywords: ["lock", "design", "mode", "switch", "components", "unlock", "padlock", "next"],
     phrases: ["what does the lock do", "how do i place components", "how do i get to design mode"],
     answer:
       "The padlock between the arches switches between tooth selection and design mode. Lock it once the teeth are right — the Components panel with its tabs then appears on the right.",
     steps: [
-      "Finish marking teeth on both arches.",
-      "Select the padlock button between the arches.",
-      "The Components panel opens — place clasps, bars, plates and the major connector.",
+      { text: "Finish marking teeth on both arches.", selector: ARCHES, next: true, skipIf: LOCK_STEP.skipIf },
+      { text: "Select the padlock button between the arches.", selector: PADLOCK, skipIf: LOCK_STEP.skipIf },
+      {
+        text: "The Components panel opens — place clasps, bars, plates and the major connector.",
+        selector: "#editModePanel",
+        reveal: PADLOCK,
+        media: MOUSE,
+        info: true,
+      },
     ],
     related: ["select-teeth", "component-tabs", "clasps"],
   },
@@ -566,16 +731,27 @@ export const HELP_TOPICS = [
     id: "component-tabs",
     title: "The Components tabs",
     page: "annotation_2d",
-    selector: "#componentTabs",
-    reveal: LOCK_ARCHES,
     keywords: ["component", "tab", "mesh", "assembly", "rests", "clasps", "bars", "plate", "major", "connector", "catalog", "palette"],
     phrases: ["what are the component tabs", "where do i find clasps", "what is in the components panel"],
     answer:
       "In design mode the Components panel groups everything into tabs: MESH, RESTS, CLASPS, BARS, MAJOR CONNECTOR, PLATE, ASSEMBLY and CASE NOTE. Pick a tab, pick an item, then select the tooth to place it on.",
     steps: [
-      "Select a tab in the Components panel.",
-      "Select the component you want from the list below it.",
-      "Select the tooth on the arch to place it.",
+      LOCK_STEP,
+      {
+        text: "Select a tab in the Components panel.",
+        selector: "#componentTabs",
+        reveal: PADLOCK,
+        media: MOUSE,
+        advanceOn: ".component-tab",
+      },
+      {
+        text: "Select the component you want from the list below it.",
+        selector: "#componentItems",
+        reveal: PADLOCK,
+        media: MOUSE,
+        advanceOn: ".component-item",
+      },
+      { text: "Select the tooth on the arch to place it.", selector: ARCHES, advanceOn: ".tooth, .tooth-suggestions" },
     ],
     related: ["clasps", "bars", "major-connector", "remove-component"],
   },
@@ -583,16 +759,16 @@ export const HELP_TOPICS = [
     id: "clasps",
     title: "Place a clasp",
     page: "annotation_2d",
-    selector: COMPONENT_TAB("clasps"),
-    reveal: LOCK_ARCHES,
     keywords: ["clasp", "retainer", "reciprocal", "reciprocating", "buccal", "lingual", "place", "arm"],
     phrases: ["how do i add a clasp", "how do i place a retainer"],
     answer:
       "Open the CLASPS tab, choose the clasp type, then select the tooth. The reciprocating element on the opposite surface is handled for you where the design calls for it.",
     steps: [
-      "Lock the arches to enter design mode.",
-      "Open the CLASPS tab in the Components panel.",
-      "Choose the clasp, then select the tooth to place it on.",
+      LOCK_STEP,
+      openTab("clasps", "Open the CLASPS tab in the Components panel."),
+      pickFromTab("clasps", "Choose the clasp type."),
+      pickOnTouch("In Mobile: tap a tooth, then pick CLASPS and the clasp type from the menu that opens."),
+      placeAt(".clasp-suggestion-group", "Select a highlighted dot beside a tooth — the clasp goes on that side."),
     ],
     related: ["component-tabs", "bars", "remove-component"],
   },
@@ -600,16 +776,22 @@ export const HELP_TOPICS = [
     id: "bars",
     title: "Place a bar",
     page: "annotation_2d",
-    selector: COMPONENT_TAB("bars"),
-    reveal: LOCK_ARCHES,
     keywords: ["bar", "connector", "lingual", "palatal", "place", "minor"],
     phrases: ["how do i add a bar", "how do i place a bar"],
     answer:
       "Open the BARS tab, choose the bar, then select the tooth. Placing a bar also adds its matching reciprocating clasp automatically.",
+    // No `requires` on the last step: with no mesh near, nothing lights up, and
+    // its card is what says why.
     steps: [
-      "Open the BARS tab in the Components panel.",
-      "Choose the bar type.",
-      "Select the tooth to place it on.",
+      LOCK_STEP,
+      openTab("bars", "Open the BARS tab in the Components panel."),
+      pickFromTab("bars", "Choose the bar type."),
+      pickOnTouch("In Mobile: tap a tooth, then pick BARS and the bar type from the menu that opens."),
+      {
+        text: "Select a highlighted tooth to place it — teeth light up within two of a missing tooth with mesh.",
+        selector: ARCHES,
+        advanceOn: ".tooth-bar-suggestible",
+      },
     ],
     related: ["component-tabs", "clasps", "major-connector"],
   },
@@ -617,16 +799,16 @@ export const HELP_TOPICS = [
     id: "major-connector",
     title: "Choose the major connector",
     page: "annotation_2d",
-    selector: COMPONENT_TAB("major"),
-    reveal: LOCK_ARCHES,
     keywords: ["major", "connector", "plate", "strap", "palatal", "lingual", "bar", "horseshoe"],
     phrases: ["how do i add a major connector", "how do i change the major connector"],
     answer:
       "The MAJOR CONNECTOR tab holds the connector options for the arch. Choosing one updates the plating on the teeth it runs across.",
     steps: [
-      "Open the MAJOR CONNECTOR tab in the Components panel.",
-      "Choose the connector for that arch.",
-      "Check the arch drawing to confirm it covers the teeth you expect.",
+      LOCK_STEP,
+      openTab("major", "Open the MAJOR CONNECTOR tab in the Components panel."),
+      pickFromTab("major", "Choose the connector for that arch."),
+      pickOnTouch("In Mobile: tap a tooth, then pick MAJOR CONNECTOR and the connector from the menu that opens."),
+      { text: "Check the arch drawing to confirm it covers the teeth you expect.", selector: ARCHES, info: true },
     ],
     related: ["component-tabs", "bars", "plates"],
   },
@@ -634,16 +816,21 @@ export const HELP_TOPICS = [
     id: "plates",
     title: "Place plating",
     page: "annotation_2d",
-    selector: COMPONENT_TAB("plate"),
-    reveal: LOCK_ARCHES,
     keywords: ["plate", "plating", "proximal", "coverage", "place"],
     phrases: ["how do i add a plate", "how do i plate a tooth"],
     answer:
       "The PLATE tab places plating on individual teeth. Plate-style major connectors also plate the teeth they cross — those follow the connector rather than being placed one by one.",
+    // On touch the quick-pick plates the tapped tooth itself, so the marks step
+    // is for a mouse.
     steps: [
-      "Open the PLATE tab in the Components panel.",
-      "Choose the plating element.",
-      "Select the tooth to place it on.",
+      LOCK_STEP,
+      openTab("plate", "Open the PLATE tab in the Components panel."),
+      pickFromTab("plate", "Choose the plating element."),
+      pickOnTouch("In Mobile: tap the tooth, then pick PLATE and the plating element from the menu that opens."),
+      {
+        ...placeAt(".plate-suggestion-visual", "Select the cyan marker on a tooth to place the plating there."),
+        media: MOUSE,
+      },
     ],
     related: ["component-tabs", "major-connector", "remove-component"],
   },
@@ -663,10 +850,34 @@ export const HELP_TOPICS = [
     answer:
       "With a mouse, right-click the tooth that carries the component — left-click always adds, right-click opens the Remove component list for that tooth. On a touch screen there is no right-click: tap the eraser beside the padlock to switch to remove mode, then tap the tooth. Either way, pick what to take off from the list. The undo button beside the padlock steps back through recent changes, and Clear Top / Clear Bottom strips every component from one jaw.",
     steps: [
-      "Mouse: right-click the tooth that carries the component (left-click adds, right-click removes).",
-      "In Mobile: tap the eraser beside the padlock, then tap the tooth.",
-      "Choose the component to remove from the list that opens.",
-      "Or use undo beside the padlock, or Clear Top / Clear Bottom for a whole jaw.",
+      LOCK_STEP,
+      {
+        text: "Mouse: right-click the tooth that carries the component (left-click adds, right-click removes).",
+        selector: ARCHES,
+        media: MOUSE,
+        rightClick: true,
+        advanceOn: ".tooth",
+      },
+      {
+        text: "In Mobile: tap the eraser beside the padlock.",
+        selector: "#removeComponentModeBtn",
+        reveal: PADLOCK,
+        media: TOUCH,
+        skipIf: "#removeComponentModeBtn.is-active",
+      },
+      { text: "In Mobile: then tap the tooth.", selector: ARCHES, media: TOUCH, advanceOn: ".tooth" },
+      // Cancel counts too: it is the way out of a list with nothing in it.
+      {
+        text: "Choose the component to remove from the list that opens.",
+        selector: REMOVE_LIST,
+        advanceOn: ".remove-component-item-btn, #removeComponentDialogCancel",
+        follows: true,
+      },
+      {
+        text: "Or use undo beside the padlock, or Clear Top / Clear Bottom for a whole jaw.",
+        selector: UNDO,
+        info: true,
+      },
     ],
     related: ["component-tabs", "clear-arch", "save-2d"],
   },
@@ -674,14 +885,17 @@ export const HELP_TOPICS = [
     id: "clear-arch",
     title: "Clear an arch and start over",
     page: "annotation_2d",
-    selector: "#clearTopBtn",
     keywords: ["clear", "reset", "start", "over", "empty", "wipe", "arch", "upper", "lower", "scratch"],
     phrases: ["how do i clear the arch", "how do i start over", "reset the design"],
     answer:
       "Clear upper teeth / Clear lower teeth reset tooth selection for one arch. In design mode the same buttons become Clear Top / Clear Bottom and strip the placed components instead, leaving the teeth alone.",
+    // No padlock reveal: each mode shows only its own pair.
     steps: [
-      "Select Clear upper teeth or Clear lower teeth below the arches.",
-      "In design mode, use Clear Top or Clear Bottom to remove components only.",
+      { text: "Select Clear upper teeth or Clear lower teeth below the arches.", selector: "#clearTopBtn" },
+      {
+        text: "In design mode, use Clear Top or Clear Bottom to remove components only.",
+        selector: "#clearUpperComponentsBtn",
+      },
     ],
     related: ["select-teeth", "remove-component", "template-jaw"],
   },
@@ -689,7 +903,6 @@ export const HELP_TOPICS = [
     id: "template-jaw",
     title: "Propose a design, or draw from scratch",
     page: "annotation_2d",
-    selector: "#loadProposalBtn",
     keywords: [
       "kennedy",
       "class",
@@ -707,9 +920,15 @@ export const HELP_TOPICS = [
     answer:
       "Load Proposed Design sends the current tooth presence, jaw type, and material to the design DLL and places what comes back on the arch straight away. If the DLL is unavailable, the local Kennedy proposal is placed instead. Draw from Scratch clears the arches so you build the case up yourself.",
     steps: [
-      "Select Load Proposed Design to place it on both arches.",
-      "Undo reverses it if you change your mind.",
-      "Or pick Draw from Scratch to start empty.",
+      LOCK_STEP,
+      { text: "Select Load Proposed Design to place it on both arches.", selector: "#loadProposalBtn", reveal: PADLOCK },
+      { text: "Undo reverses it if you change your mind.", selector: UNDO, info: true },
+      {
+        text: "Or pick Draw from Scratch to start empty.",
+        selector: "#drawFromScratchBtn",
+        reveal: PADLOCK,
+        info: true,
+      },
     ],
     related: ["select-teeth", "clear-arch"],
   },
@@ -717,15 +936,20 @@ export const HELP_TOPICS = [
     id: "tooth-conditions",
     title: "Record tooth conditions",
     page: "annotation_2d",
-    selector: "#openClinicalInfoBtn",
     keywords: ["condition", "crown", "implant", "extraction", "inlay", "onlay", "root", "canal", "stump", "cracked", "mobility", "tilted", "restoration", "abutment"],
     phrases: ["how do i mark a crown", "how do i record an implant", "where do i set tooth conditions"],
     answer:
       "Clinical Info records per-tooth conditions — crown, implant, extraction, inlay, onlay, root canal therapy, root stump, cracked, mobility, tilted tooth and restoration — on an upper and lower row.",
     steps: [
-      "Select the Clinical Information button in the header of the 2D design.",
-      "Select a tooth in the upper or lower row.",
-      "Apply the condition, then Save.",
+      { text: "Select the Clinical Information button in the header of the 2D design.", selector: "#openClinicalInfoBtn" },
+      {
+        text: "Select a tooth in the upper or lower row.",
+        selector: ".clinical-info-chart",
+        ...IN_CLINICAL_INFO,
+        advanceOn: ".clinical-info-tooth",
+      },
+      { text: "Apply the condition from the LEGEND.", selector: ".clinical-info-legend", ...IN_CLINICAL_INFO, next: true },
+      { text: "Select Save Notes.", selector: "#clinicalInfoSaveBtn", ...IN_CLINICAL_INFO },
     ],
     related: ["clinical-info", "select-teeth", "case-note"],
   },
@@ -733,15 +957,19 @@ export const HELP_TOPICS = [
     id: "clinical-info",
     title: "Clinical Info",
     page: "annotation_2d",
-    selector: "#openClinicalInfoBtn",
     keywords: ["clinical", "info", "information", "chart", "legend", "medical", "history"],
     phrases: ["what is clinical info", "where is the clinical information"],
     answer:
       "Clinical Info is the per-tooth clinical chart for the case, with a legend for the markers. It has its own Save, and Clear empties it.",
     steps: [
-      "Select the Clinical Information button in the header.",
-      "Mark the teeth, using the LEGEND as a reference.",
-      "Select Save.",
+      { text: "Select the Clinical Information button in the header.", selector: "#openClinicalInfoBtn" },
+      {
+        text: "Mark the teeth, using the LEGEND as a reference.",
+        selector: ".clinical-info-panel",
+        ...IN_CLINICAL_INFO,
+        next: true,
+      },
+      { text: "Select Save.", selector: "#clinicalInfoSaveBtn", ...IN_CLINICAL_INFO },
     ],
     related: ["tooth-conditions", "case-note", "noticeboard"],
   },
@@ -749,15 +977,18 @@ export const HELP_TOPICS = [
     id: "case-note",
     title: "Case Note and Date Required",
     page: "annotation_2d",
-    selector: "#footerCaseNoteBtn",
     keywords: ["case", "note", "comment", "date", "required", "due", "text", "write", "instruction"],
     phrases: ["where is the case note", "how do i set date required"],
     answer:
       "The Case Note holds the written brief for the case, including Date Required — which is what the case list shows as Due. It is both a tab in the Components panel and the note button in the header.",
     steps: [
-      "Select the Case Note button, or the CASE NOTE tab in the Components panel.",
-      "Fill in the note and Date Required.",
-      "Save the design to keep it.",
+      {
+        text: "Select the Case Note button, or the CASE NOTE tab in the Components panel.",
+        selector: [COMPONENT_TAB("case-note"), "#footerCaseNoteBtn"],
+        reveal: PADLOCK,
+      },
+      { text: "Fill in the note and Date Required.", selector: ".case-note-form", ...IN_CASE_NOTE, next: true },
+      { text: "Save the design to keep it.", selector: "#stickySaveBtn" },
     ],
     related: ["due-date", "case-instructions", "clinical-info"],
   },
@@ -765,15 +996,18 @@ export const HELP_TOPICS = [
     id: "noticeboard",
     title: "Noticeboard",
     page: "annotation_2d",
-    selector: "#openNoticeboardBtn",
     keywords: ["noticeboard", "board", "instruction", "slide", "capture", "screenshot", "report", "view"],
     phrases: ["what is the noticeboard", "how do i add an instruction card"],
     answer:
       "The Noticeboard collects instruction cards and captured views for the case, and can generate a report from them. It opens from the clipboard button in the footer.",
     steps: [
-      "Select the clipboard button in the footer bar.",
-      "Add instruction cards or captured views.",
-      "Use Generate Report to produce the summary.",
+      { text: "Select the clipboard button in the footer bar.", selector: "#openNoticeboardBtn" },
+      { text: "Add instruction cards or captured views.", selector: "#addInstructionBtn", ...IN_NOTICEBOARD, info: true },
+      {
+        text: "Use Generate Report to produce the summary.",
+        selector: "#noticeboardGenerateReportBtn",
+        ...IN_NOTICEBOARD,
+      },
     ],
     related: ["case-note", "clinical-info", "reference-images"],
   },
@@ -781,15 +1015,13 @@ export const HELP_TOPICS = [
     id: "save-2d",
     title: "Save the 2D design",
     page: "annotation_2d",
-    selector: "#sidebarSaveBtn",
-    reveal: APP_MENU,
     keywords: ["save", "keep", "store", "commit", "persist", "design", "work"],
     phrases: ["how do i save", "how do i save my design", "does it save automatically"],
     answer:
       "Save is in the footer menu of the 2D design — it writes both jaws back to the server. Leaving without saving prompts you to Save & Return or return anyway.",
     steps: [
-      "Select the menu button in the footer bar.",
-      "Choose Save and wait for the confirmation message.",
+      { text: "Select the menu button in the footer bar.", selector: APP_MENU },
+      { text: "Choose Save and wait for the confirmation message.", selector: "#sidebarSaveBtn", ...IN_APP_MENU },
     ],
     related: ["return-to-list", "version-history"],
   },
@@ -797,13 +1029,14 @@ export const HELP_TOPICS = [
     id: "return-to-list",
     title: "Go back to the case list",
     page: "annotation_2d",
-    selector: "#sidebarReturnBtn",
-    reveal: APP_MENU,
     keywords: ["return", "back", "exit", "leave", "close", "list", "quit"],
     phrases: ["how do i go back", "how do i return to the case list"],
     answer:
       "Return is in the footer menu. If there are unsaved changes you are offered Save & Return or Return without saving.",
-    steps: ["Select the menu button in the footer bar.", "Choose Return."],
+    steps: [
+      { text: "Select the menu button in the footer bar.", selector: APP_MENU },
+      { text: "Choose Return.", selector: "#sidebarReturnBtn", ...IN_APP_MENU },
+    ],
     related: ["save-2d", "start-case"],
   },
   {
@@ -815,8 +1048,16 @@ export const HELP_TOPICS = [
     answer:
       "Version History lists the saved versions of a case. Reach it from the case-actions menu on the case list, or from the footer menu while a design is open.",
     steps: [
-      "On the case list: open the ☰ menu beside the case name and choose View Version History.",
-      "In a design: open the footer menu and choose Version History.",
+      {
+        text: "On the case list: open the ☰ menu beside the case name and choose View Version History.",
+        selector: "#viewVersionBtn",
+        reveal: CASE_MENU,
+      },
+      {
+        text: "In a design: open the footer menu and choose Version History.",
+        selector: "#sidebarVersionHistoryBtn",
+        ...IN_APP_MENU,
+      },
     ],
     related: ["save-2d", "case-menu", "annotation-history"],
   },
@@ -836,15 +1077,14 @@ export const HELP_TOPICS = [
     id: "navigate-3d",
     title: "Move around the 3D model",
     page: "viewer_3d",
-    selector: "#container3D",
     keywords: ["rotate", "zoom", "pan", "orbit", "move", "spin", "view", "3d", "camera", "navigate"],
     phrases: ["how do i rotate the model", "how do i zoom in", "how do i move the 3d view"],
     answer:
       "Drag to rotate the jaw, scroll to zoom, and drag with the right mouse button (or two fingers) to pan. On a touch screen, one finger rotates and a pinch zooms. The jaw preview in the 2D design works the same way — except while a survey is armed, when dragging aims the arrow and right-drag rotates.",
     steps: [
-      "Drag on the model to rotate it.",
-      "Scroll or pinch to zoom.",
-      "Right-drag or two-finger drag to pan.",
+      { text: "Drag on the model to rotate it.", selector: "#container3D", next: true },
+      { text: "Scroll or pinch to zoom.", selector: "#container3D", next: true },
+      { text: "Right-drag or two-finger drag to pan.", selector: "#container3D", next: true },
     ],
     related: ["annotate-3d", "jaw-preview"],
   },
@@ -857,8 +1097,13 @@ export const HELP_TOPICS = [
     answer:
       "The 3D Viewer is its own page, opened from a case's 3D link or QR code on the case list. It needs no sign-in, so it is what you send to someone who only needs to look at the model.",
     steps: [
-      "Select the case in the case list.",
-      "Use the 3D link row in the detail panel — copy the link, open it, or show the QR code.",
+      { text: "Select the case in the case list.", ...PICK_CASE },
+      {
+        text: "Use the 3D link row in the detail panel — copy the link, open it, or show the QR code.",
+        selector: "#view3dLinkRow",
+        ...IN_DETAIL,
+        advanceOn: "button",
+      },
     ],
     related: ["share-3d-link", "qr-code", "viewer-vs-preview"],
   },
@@ -866,15 +1111,28 @@ export const HELP_TOPICS = [
     id: "undercut-heatmap",
     title: "Read the undercut heatmap (jaw preview)",
     page: "annotation_2d",
-    selector: ".jaw-preview-undercut-icon",
     keywords: ["undercut", "heatmap", "colour", "color", "legend", "map", "depth", "shading", "mm", "scale"],
     phrases: ["what do the colours mean", "what is the undercut heatmap", "how do i read the legend"],
     answer:
       "In the 3D jaw preview the icon at the top-left of the panel turns the undercut heatmap on and off, and the Undercut (mm) legend drops down beneath it while it's on. The shading is measured against that jaw's survey angle, so it changes whenever you re-survey.",
     steps: [
-      "Open the case in the 2D design and look at the 3D jaw preview panel.",
-      "Select the undercut icon at the top-left of the panel to turn the heatmap on.",
-      "Read the depths against the Undercut (mm) legend below the icon.",
+      {
+        text: "Open the case in the 2D design and look at the 3D jaw preview panel.",
+        selector: ".jaw-preview-shell",
+        info: true,
+      },
+      {
+        text: "Select the undercut icon at the top-left of the panel to turn the heatmap on.",
+        selector: ".jaw-preview-undercut-icon",
+        // Pressing it while the heatmap is on would turn it off.
+        skipIf: ".jaw-preview-undercut:not(.jaw-preview-occlusion):not(.is-off)",
+      },
+      // The icon and, while the heatmap is on, the legend under it.
+      {
+        text: "Read the depths against the Undercut (mm) legend below the icon.",
+        selector: ".jaw-preview-undercut",
+        info: true,
+      },
     ],
     related: ["survey-angle", "jaw-preview"],
   },
@@ -884,7 +1142,6 @@ export const HELP_TOPICS = [
     // The survey tool is part of the jaw preview inside the 2D design — NOT the
     // standalone 3D viewer, which has no surveying at all.
     page: "annotation_2d",
-    selector: ".jaw-preview-survey-btn",
     keywords: ["survey", "angle", "insertion", "path", "tilt", "direction", "surveying", "arrow", "aim", "target"],
     phrases: [
       "how do i change the survey angle",
@@ -895,11 +1152,23 @@ export const HELP_TOPICS = [
     answer:
       "Each jaw row in the 3D jaw preview has its own SET SURVEY ANGLE button. It arms that jaw, maximises the panel and shows a placement arrow you aim to choose the path of insertion; the undercut heatmap is then recalculated against it and stored on the case.",
     steps: [
-      "Open the case in the 2D design and find the 3D jaw preview panel.",
-      "Select SET SURVEY ANGLE on the upper or lower jaw row.",
-      "Drag to swing the placement arrow, and right-drag to rotate the jaw itself.",
-      "Press SET (the same button) to survey at that angle.",
-      "Press CANCEL or Esc to back out and keep the previous angle.",
+      {
+        text: "Open the case in the 2D design and find the 3D jaw preview panel.",
+        selector: ".jaw-preview-shell",
+        info: true,
+      },
+      { text: "Select SET SURVEY ANGLE on the upper or lower jaw row.", selector: ".jaw-preview-survey-btn" },
+      {
+        text: "Drag to swing the placement arrow, and right-drag to rotate the jaw itself.",
+        selector: ".jaw-preview-shell",
+        next: true,
+      },
+      { text: "Press SET (the same button) to survey at that angle.", selector: ".jaw-preview-survey-btn" },
+      {
+        text: "Press CANCEL or Esc to back out and keep the previous angle.",
+        selector: ".jaw-preview-survey-btn",
+        info: true,
+      },
     ],
     related: ["undercut-heatmap", "jaw-preview", "viewer-vs-preview"],
   },
@@ -907,15 +1176,22 @@ export const HELP_TOPICS = [
     id: "jaw-preview",
     title: "The 3D jaw preview panel",
     page: "annotation_2d",
-    selector: ".jaw-preview-shell",
     keywords: ["preview", "panel", "jaw", "3d", "model", "row", "upper", "lower", "mesh", "processing"],
     phrases: ["what is the jaw preview", "what is the 3d panel in the 2d design"],
     answer:
       "The panel beside the arches shows the case's jaws in 3D while you design. Each jaw has a row with an ALLOW PROCESSING toggle, an undercut heatmap, its own survey control, and — for a jaw with no scan yet — an upload button.",
     steps: [
-      "Open the case in the 2D design; the preview sits in the left panel.",
-      "Use the upper and lower rows to control each jaw independently.",
-      "Maximise the panel when you need a closer look.",
+      {
+        text: "Open the case in the 2D design; the preview sits in the left panel.",
+        selector: ".jaw-preview-shell",
+        info: true,
+      },
+      {
+        text: "Use the upper and lower rows to control each jaw independently.",
+        selector: ".jaw-preview-rows",
+        info: true,
+      },
+      { text: "Maximise the panel when you need a closer look.", selector: "#preview3dMaximizeBtn", info: true },
     ],
     related: ["survey-angle", "undercut-heatmap", "preview-maximize", "preview-jaw-upload", "viewer-vs-preview"],
   },
@@ -940,26 +1216,27 @@ export const HELP_TOPICS = [
     id: "preview-maximize",
     title: "Maximise the jaw preview",
     page: "annotation_2d",
-    selector: "#preview3dMaximizeBtn",
     keywords: ["maximize", "maximise", "expand", "bigger", "enlarge", "fullscreen", "restore", "panel"],
     phrases: ["how do i make the 3d panel bigger", "how do i maximize the preview"],
     answer:
       "The maximise button in the corner of the preview expands it to fill the workspace; the same button restores it. Arming a survey maximises the panel for you.",
-    steps: ["Select the maximise button in the corner of the 3D preview.", "Select it again to restore the layout."],
+    steps: [
+      { text: "Select the maximise button in the corner of the 3D preview.", selector: "#preview3dMaximizeBtn" },
+      { text: "Select it again to restore the layout.", selector: "#preview3dMaximizeBtn" },
+    ],
     related: ["jaw-preview", "survey-angle", "preview-capture"],
   },
   {
     id: "preview-capture",
     title: "Capture the 3D view",
     page: "annotation_2d",
-    selector: "#preview3dCaptureBtn",
     keywords: ["capture", "screenshot", "camera", "photo", "thumbnail", "snap", "picture"],
     phrases: ["how do i take a screenshot of the 3d model", "what does the camera button do"],
     answer:
       "The camera button renders the current 3D view and saves it as the case's thumbnail. To put a view on the Noticeboard instead, use the Noticeboard's own Add Viewcapture button.",
     steps: [
-      "Position the jaws the way you want them shown.",
-      "Select the camera button on the 3D preview.",
+      { text: "Position the jaws the way you want them shown.", selector: ".jaw-preview-shell", next: true },
+      { text: "Select the camera button on the 3D preview.", selector: "#preview3dCaptureBtn" },
     ],
     related: ["jaw-preview", "noticeboard", "preview-maximize"],
   },
@@ -967,15 +1244,22 @@ export const HELP_TOPICS = [
     id: "preview-jaw-upload",
     title: "Upload a jaw from the preview",
     page: "annotation_2d",
-    selector: ".jaw-preview-upload-btn",
     keywords: ["upload", "jaw", "stl", "3d", "file", "empty", "missing", "add", "scan", "row"],
     phrases: ["how do i upload a jaw in the 2d design", "the jaw is missing from the preview"],
     answer:
       "A jaw row with no scan yet shows an upload button — it stores the file as that jaw for the case. Once a jaw is loaded the row shows the survey and hide controls instead.",
     steps: [
-      "Find the empty jaw's row in the 3D preview.",
-      "Select the upload button on that row and pick the file.",
-      "Wait for UPLOADING… to finish; the jaw then appears in the preview.",
+      {
+        text: "Find the empty jaw's row in the 3D preview.",
+        selector: ".jaw-preview-row:has(.jaw-preview-upload-btn)",
+        info: true,
+      },
+      { text: "Select the upload button on that row and pick the file.", selector: ".jaw-preview-upload-btn" },
+      {
+        text: "Wait for UPLOADING… to finish; the jaw then appears in the preview.",
+        selector: ".jaw-preview-shell",
+        info: true,
+      },
     ],
     related: ["upload-jaw-scans", "jaw-preview", "mesh-quality", "extra-reference-stl"],
   },
@@ -983,7 +1267,6 @@ export const HELP_TOPICS = [
     id: "extra-reference-stl",
     title: "Upload extra reference 3D files",
     page: "annotation_2d",
-    selector: "#previewTabExtras",
     keywords: ["extra", "reference", "3d", "file", "stl", "slot", "upload", "other", "additional", "tab"],
     phrases: [
       "how do i upload extra 3d files",
@@ -993,10 +1276,16 @@ export const HELP_TOPICS = [
     ],
     answer:
       "The Extra 3D tab above the preview panel adds STL files beyond the main upper and lower jaw — up to four slots per case. Opening the tab puts those files on the 3D stage, and each row's icon shows or hides its file.",
+    // All on the tab itself, and only pointed at: opening it downloads every
+    // extra file, too heavy to set off for someone who only asked how.
     steps: [
-      "Open the Extra 3D tab above the preview panel.",
-      "Choose a file for an open slot (up to 4 per case).",
-      "Delete a slot's file first if all four are already in use.",
+      { text: "Open the Extra 3D tab above the preview panel.", selector: "#previewTabExtras", info: true },
+      { text: "Choose a file for an open slot (up to 4 per case).", selector: "#previewTabExtras", info: true },
+      {
+        text: "Delete a slot's file first if all four are already in use.",
+        selector: "#previewTabExtras",
+        info: true,
+      },
     ],
     related: ["upload-jaw-scans", "jaw-preview"],
   },
@@ -1004,27 +1293,30 @@ export const HELP_TOPICS = [
     id: "mesh-quality",
     title: "Switch jaw quality (HD / SD)",
     page: "annotation_2d",
-    selector: ".jaw-preview-quality-toggle",
     keywords: ["quality", "hd", "sd", "high", "low", "detail", "resolution", "slow", "performance", "mesh"],
     phrases: ["what is hd and sd", "how do i change the mesh quality", "the 3d preview is slow"],
     answer:
       "The HD/SD badge in the corner of the preview shows the quality the jaws are currently rendered at; selecting it re-renders at the other one. Drop to SD when the preview feels slow, and go back to HD for detail.",
-    steps: ["Select the HD/SD badge in the corner of the 3D preview to flip between them."],
+    steps: [
+      {
+        text: "Select the HD/SD badge in the corner of the 3D preview to flip between them.",
+        selector: ".jaw-preview-quality-toggle",
+      },
+    ],
     related: ["jaw-preview", "preview-jaw-upload", "list-slow"],
   },
   {
     id: "annotate-3d",
     title: "Draw on the 3D view",
     page: "viewer_3d",
-    selector: "#footerPenBtn",
     keywords: ["pen", "draw", "eraser", "annotate", "mark", "sketch", "undo", "redo", "line"],
     phrases: ["how do i draw on the model", "how do i annotate in 3d", "how do i erase my drawing"],
     answer:
       "The pen and eraser in the footer let you draw over the 3D view, with undo and redo beside them.",
     steps: [
-      "Select the pen in the footer bar and draw on the model.",
-      "Switch to the eraser to rub marks out.",
-      "Use undo and redo to step back and forward.",
+      { text: "Select the pen in the footer bar and draw on the model.", selector: "#footerPenBtn" },
+      { text: "Switch to the eraser to rub marks out.", selector: "#footerEraserBtn" },
+      { text: "Use undo and redo to step back and forward.", selector: "#footerDrawUndoBtn" },
     ],
     related: ["navigate-3d", "clinical-notes-3d", "case-chat"],
   },
@@ -1032,26 +1324,38 @@ export const HELP_TOPICS = [
     id: "clinical-notes-3d",
     title: "Clinical design notes in 3D",
     page: "viewer_3d",
-    selector: "#footerNotesBtn",
     keywords: ["notes", "clinical", "design", "write", "comment", "3d"],
     phrases: ["where do i write notes in the 3d viewer"],
     answer: "The notes button in the footer opens the Clinical Design Notes box for the case.",
-    steps: ["Select the notes button in the footer bar.", "Type your notes — they save with the case."],
+    steps: [
+      { text: "Select the notes button in the footer bar.", selector: "#footerNotesBtn" },
+      {
+        text: "Type your notes — they save with the case.",
+        selector: "#clinicalNotesText",
+        reveal: "#footerNotesBtn",
+        dismiss: "#clinicalNotesClose",
+        next: true,
+      },
+    ],
     related: ["case-note", "case-chat", "annotate-3d"],
   },
   {
     id: "case-chat",
     title: "Case chat",
     page: null,
-    selector: "#footerChatBtn",
     keywords: ["chat", "message", "talk", "discuss", "comment", "reply", "team", "colleague", "send"],
     phrases: ["how do i message someone about a case", "what is case chat", "how do i send a picture"],
     answer:
       "Case chat is the per-case conversation, opened by the chat button in the footer. You can send text and images — paste, drag or use the + button — and new messages arrive while the panel is open.",
     steps: [
-      "Select the chat button in the footer bar.",
-      "Type a comment, and attach an image with +, paste or drag-and-drop.",
-      "Select Send.",
+      { text: "Select the chat button in the footer bar.", selector: "#footerChatBtn" },
+      {
+        text: "Type a comment, and attach an image with +, paste or drag-and-drop.",
+        selector: "#chat-input-area",
+        ...IN_CHAT,
+        next: true,
+      },
+      { text: "Select Send.", selector: "#sendBtn", ...IN_CHAT },
     ],
     related: ["notifications", "case-instructions", "clinical-notes-3d"],
   },
@@ -1065,9 +1369,11 @@ export const HELP_TOPICS = [
     phrases: ["how do i add a user", "where is user management", "how do i register someone"],
     answer:
       "User Management is the administrator page for registering and maintaining accounts. It is only visible to administrators — the menu entry and header shortcut stay hidden otherwise.",
+    // The first step stays prose: on this page its sidebar entry is hidden, so
+    // opening the menu for it would show nothing.
     steps: [
       "Open the footer menu and choose User Management (administrators only).",
-      "Add, edit or remove accounts from there.",
+      { text: "Add, edit or remove accounts from there.", selector: "#userListWrap", info: true },
     ],
     related: ["approve-signup", "admin-machine-ids", "user-access"],
   },
@@ -1081,8 +1387,16 @@ export const HELP_TOPICS = [
       "Sign-up requests arrive by email to administrators — nothing is queued in the app, so there is no pending list to work through. To approve one, register that person in User Management; the system then emails them to set their password.",
     steps: [
       "Open the request email.",
-      "In User Management, register the person with those details.",
-      "They receive an email with a link to set their password.",
+      {
+        text: "In User Management, register the person with those details.",
+        selector: "#registerUserBtn",
+        info: true,
+      },
+      {
+        text: "They receive an email with a link to set their password.",
+        selector: "#registerUserBtn",
+        info: true,
+      },
     ],
     related: ["admin-users", "request-account", "forgot-password"],
   },
@@ -1124,8 +1438,6 @@ export const HELP_TOPICS = [
     id: "report-a-problem",
     title: "Report a bug or ask for help",
     page: null,
-    selector: "#sidebarFeedbackBtn",
-    reveal: APP_MENU,
     keywords: ["bug", "issue", "problem", "contact", "support", "feedback", "report", "broken", "escalate"],
     phrases: [
       "who do i contact for a bug",
@@ -1136,7 +1448,14 @@ export const HELP_TOPICS = [
     ],
     answer:
       "Feedback in the footer menu is the working channel right now — it opens a short form the team monitors.",
-    steps: ["Open the menu in the footer bar.", "Select Feedback.", "Fill in the form — it opens in a new tab."],
+    steps: [
+      { text: "Open the menu in the footer bar.", selector: APP_MENU },
+      {
+        text: "Select Feedback, and fill in the form — it opens in a new tab.",
+        selector: "#sidebarFeedbackBtn",
+        ...IN_APP_MENU,
+      },
+    ],
     related: ["case-chat", "app-frozen"],
   },
   {
@@ -1147,9 +1466,10 @@ export const HELP_TOPICS = [
     phrases: ["the case list is empty", "why is it so slow", "nothing is loading"],
     answer:
       "Case details load as you scroll, so a long list fills in gradually. If it stalls, refresh the list first — the server slows down bursts of requests, and details resume shortly after.",
+    // Refresh reloads the page, and the walk with it, so here it is only pointed at.
     steps: [
-      "Select the refresh button in the header.",
-      "Give it a few seconds and scroll again.",
+      { text: "Select the refresh button in the header.", selector: "#refreshListBtn", info: true },
+      { text: "Give it a few seconds and scroll again.", selector: "#caseList", next: true },
       "If it is still empty, sign out and back in.",
     ],
     related: ["refresh-list", "images-missing", "changes-not-saving", "app-frozen"],
@@ -1164,7 +1484,8 @@ export const HELP_TOPICS = [
       "Thumbnails and chat images can be large and load after the rest of the page. If one never appears, refresh the list; if it is still blank, re-upload the image on the case.",
     steps: [
       "Wait a few seconds — images load after the case data.",
-      "Refresh the case list.",
+      // Only pointed at: it reloads the page, and the step after it with it.
+      { text: "Refresh the case list.", selector: "#refreshListBtn", info: true },
       "Re-upload the image if it stays blank.",
     ],
     related: ["reference-images", "list-slow", "refresh-list"],
@@ -1179,8 +1500,16 @@ export const HELP_TOPICS = [
       "The 2D design only persists when you Save from the footer menu — closing the tab loses unsaved work. Check the connection indicator in the footer, save again, and use Version History to see what was stored.",
     steps: [
       "Check the connection indicator in the footer bar.",
-      "Open the footer menu and select Save; wait for the confirmation.",
-      "Open Version History to confirm the version was written.",
+      {
+        text: "Open the footer menu and select Save; wait for the confirmation.",
+        selector: "#sidebarSaveBtn",
+        ...IN_APP_MENU,
+      },
+      {
+        text: "Open Version History to confirm the version was written.",
+        selector: "#sidebarVersionHistoryBtn",
+        ...IN_APP_MENU,
+      },
     ],
     related: ["save-2d", "version-history", "list-slow"],
   },
@@ -1245,3 +1574,15 @@ export const HELP_TOPICS = [
 
 // id → topic, for `related` resolution.
 export const TOPIC_BY_ID = new Map(HELP_TOPICS.map((t) => [t.id, t]));
+
+export const stepText = (step) => (typeof step === "string" ? step : step.text);
+
+// The topic's steps as tour cards under its title — prose steps become centred
+// cards. Empty when no step names a control, since that topic has no Show me.
+export function walkthroughFor(topic) {
+  const steps = topic?.steps || [];
+  if (!steps.some((step) => typeof step !== "string" && step.selector)) return [];
+  return steps.map((step) =>
+    typeof step === "string" ? { title: topic.title, text: step } : { title: topic.title, ...step }
+  );
+}

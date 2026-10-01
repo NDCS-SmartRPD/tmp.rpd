@@ -45,6 +45,49 @@
   border-radius: 0;
 }
 
+/* Clicked outside the lit control in a walkthrough: a ring runs out from it. */
+.pt-mask.is-nudged {
+  animation: pt-nudge 0.6s ease-out;
+}
+@keyframes pt-nudge {
+  from { outline: 3px solid rgba(59, 174, 149, 0.9); outline-offset: 0; }
+  to { outline: 3px solid rgba(59, 174, 149, 0); outline-offset: 12px; }
+}
+
+/* A help walkthrough is done on the page itself. The dimming stops catching
+   clicks; the blocker takes them instead, with a hole (clip-path, set by
+   pageTour.js) over the lit control so that stays usable. */
+.pt-block {
+  position: absolute;
+  inset: 0;
+  display: none;
+}
+#page-tour.is-walkthrough {
+  pointer-events: none;
+}
+#page-tour.is-walkthrough .pt-mask {
+  pointer-events: none;
+  cursor: default;
+}
+#page-tour.is-walkthrough .pt-block {
+  display: block;
+  pointer-events: auto;
+}
+/* Typing steps can open pickers anywhere, so they leave the whole page usable. */
+#page-tour.is-walkthrough.is-free .pt-block {
+  pointer-events: none;
+}
+
+/* The page's own pop-ups rise above a walkthrough, so a step that opens one
+   can use it: the calendar, select menu, tooth quick pick and confirm box. */
+html.pt-walking .tcal-pop,
+html.pt-walking .tsel-pop,
+html.pt-walking .tooth-quickpick-backdrop,
+html.pt-walking .tooth-radial-backdrop,
+html.pt-walking .app-confirm-overlay {
+  z-index: 10060;
+}
+
 /* Ring on the control so the spotlight reads as deliberate, not as a gap.
    Never raise the target's z-index: tall targets then cover the card's Next. */
 .pt-target {
@@ -128,6 +171,32 @@
   color: var(--pt-ink);
 }
 
+/* Stands in for Next on a walkthrough step that moves on when its control is used. */
+.pt-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--pt-primary-dark);
+}
+.pt-hint::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--pt-primary);
+  animation: pt-pulse 1.4s ease-in-out infinite;
+}
+.pt-hint[hidden] {
+  display: none;
+}
+@keyframes pt-pulse {
+  50% { box-shadow: 0 0 0 5px rgba(59, 174, 149, 0.25); }
+}
+
 .pt-dots {
   display: flex;
   flex-wrap: wrap;
@@ -154,6 +223,12 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.pt-card-foot[hidden] {
+  display: none;
+}
+.pt-dots:has(+ .pt-card-foot[hidden]) {
+  margin-bottom: 0;
 }
 .pt-spacer {
   flex: 1;
@@ -226,5 +301,9 @@
   .pt-mask,
   .pt-card {
     transition: none;
+  }
+  .pt-mask.is-nudged,
+  .pt-hint::before {
+    animation: none;
   }
 }

@@ -18,7 +18,14 @@ import {
   localProvider,
   MIN_SCORE,
 } from "../src/js/shared/helpMatcher.js";
-import { HELP_TOPICS, TOPIC_BY_ID, PAGE_LABELS, PAGE_PATHS } from "../src/js/shared/helpTopics.js";
+import {
+  HELP_TOPICS,
+  TOPIC_BY_ID,
+  PAGE_LABELS,
+  PAGE_PATHS,
+  stepText,
+  walkthroughFor,
+} from "../src/js/shared/helpTopics.js";
 import { COMPONENT_TABS } from "../src/js/2D/components.js";
 import { undefinedSelectorParts } from "./helpers/appSources.mjs";
 
@@ -207,7 +214,7 @@ describe("3D surfaces are not conflated", () => {
     const viewerTopics = HELP_TOPICS.filter((t) => t.page === "viewer_3d");
     expect(viewerTopics.length).toBeGreaterThan(0);
     for (const topic of viewerTopics) {
-      const claimsSurveying = /\bsurvey(ing)?\b/i.test(`${topic.title} ${topic.steps.join(" ")}`);
+      const claimsSurveying = /\bsurvey(ing)?\b/i.test(`${topic.title} ${topic.steps.map(stepText).join(" ")}`);
       expect(claimsSurveying).toBe(false);
     }
   });
@@ -222,35 +229,79 @@ describe("3D surfaces are not conflated", () => {
   });
 });
 
-// "Show me" used to highlight whatever control was visible, so topics about
-// things inside a closed view pointed at the button that opens that view. Asking
-// how to upload an STL rang the Create Case button the user had already found
-// and stopped there. Targets now name the real control and delegate the opening
-// to `reveal`; these pin that split.
-describe("Show me points at the control, not at what opens it", () => {
-  const OPENERS = ["#createCaseBtn", ".cm-detail .dropdown-toggle"];
-  // The only two topics whose subject IS the opener.
-  const ABOUT_THE_OPENER = new Set(["create-case", "case-menu"]);
+const listOf = (v) => (Array.isArray(v) ? v : v ? [v] : []);
 
-  test("no topic targets an opener unless that opener is its subject", () => {
-    const offenders = HELP_TOPICS.filter(
-      (t) => t.selector && !ABOUT_THE_OPENER.has(t.id) && OPENERS.includes(t.selector)
-    ).map((t) => `${t.id} → ${t.selector}`);
-    expect(offenders).toEqual([]);
+// Every step that names a control, with its topic.
+const ANCHORED = HELP_TOPICS.flatMap((topic) =>
+  topic.steps.filter((step) => typeof step !== "string").map((step) => ({ topic, step }))
+);
+
+// The card for `selector` in a topic's walkthrough.
+const cardFor = (id, selector) =>
+  walkthroughFor(TOPIC_BY_ID.get(id)).find((card) => listOf(card.selector).includes(selector));
+
+const CREATE_CASE = ["#createCaseBtn", "#mobileCreateCaseBtn"];
+const PADLOCK = "#jawLockToggleBtn";
+const MOUSE = "not all and (pointer: coarse)";
+const inComponentsPanel = (step) =>
+  listOf(step.selector).length > 0 &&
+  listOf(step.selector).every((s) => /^#(componentTabs|componentItems|editModePanel)\b/.test(s));
+
+// "Show me" used to ring one control and stop: asking how to create a case lit
+// the Create Case button and never went into the form it opens. It now walks the
+// answer's own steps as a mini tour, one card per step.
+describe("Show me walks the answer's steps", () => {
+  test("the walkthrough is the topic's steps in order, each carded under its title", () => {
+    const topic = TOPIC_BY_ID.get("create-case");
+    const cards = walkthroughFor(topic);
+    expect(cards.map((card) => card.text)).toEqual(topic.steps.map(stepText));
+    expect(cards.every((card) => card.title === topic.title)).toBe(true);
   });
 
-  test("a reveal always differs from the target it uncovers", () => {
+  test("creating a case starts at the button, goes into the form, and ends on Save", () => {
+    const cards = walkthroughFor(TOPIC_BY_ID.get("create-case"));
+    expect(cards[0].selector).toEqual(CREATE_CASE);
+    for (const card of cards.slice(1)) expect(card.reveal).toEqual(CREATE_CASE);
+    expect(cards.at(-1).selector).toBe("#createCaseUpload .save-btn");
+  });
+
+  test("prose steps stay in as centred cards; with none anchored there is no walkthrough", () => {
+    const due = walkthroughFor(TOPIC_BY_ID.get("due-date"));
+    expect(due).toHaveLength(3);
+    expect(due.filter((card) => !card.selector)).toHaveLength(2);
+    expect(walkthroughFor(TOPIC_BY_ID.get("share-link-privacy"))).toEqual([]);
+    expect(walkthroughFor(TOPIC_BY_ID.get("app-frozen"))).toEqual([]);
+  });
+
+  test("every step has wording, whichever shape it takes", () => {
     for (const topic of HELP_TOPICS) {
-      if (!topic.reveal) continue;
-      expect(topic.selector).toBeTruthy();
-      expect(topic.reveal).not.toBe(topic.selector);
+      for (const step of topic.steps) {
+        expect([topic.id, typeof stepText(step)]).toEqual([topic.id, "string"]);
+        expect(stepText(step).length).toBeGreaterThan(0);
+      }
     }
   });
 
+  test("the matcher indexes an anchored step's wording, not the object", () => {
+    // "save" is only in create-case's last step — not its title, answer or keywords.
+    const topic = TOPIC_BY_ID.get("create-case");
+    expect(scoreTopic(["save"], topic)).toBeGreaterThan(0);
+    expect(scoreTopic(["object"], topic)).toBe(0);
+  });
+});
+
+// The target is always the control the step talks about; opening the view it
+// sits in is `reveal`'s job.
+describe("Show me points at the control, not at what opens it", () => {
+  test("a reveal never names the control it uncovers", () => {
+    const offenders = ANCHORED.filter(({ step }) =>
+      listOf(step.reveal).some((r) => listOf(step.selector).includes(r))
+    ).map(({ topic }) => topic.id);
+    expect(offenders).toEqual([]);
+  });
+
   test("uploading a jaw scan points into the create-case form", () => {
-    const topic = TOPIC_BY_ID.get("upload-jaw-scans");
-    expect(topic.selector).toBe("#uploadedJawModels");
-    expect(topic.reveal).toBe("#createCaseBtn");
+    expect(cardFor("upload-jaw-scans", "#uploadedJawModels").reveal).toEqual(CREATE_CASE);
   });
 
   test.each([
@@ -260,70 +311,195 @@ describe("Show me points at the control, not at what opens it", () => {
     ["download-references", "#downloadReferencesBtn"],
     ["user-access", "#editUserAccessBtn"],
     ["dashboard", "#viewDashboardBtn"],
-  ])("%s points at its own item in the case-actions menu", (id, selector) => {
-    const topic = TOPIC_BY_ID.get(id);
-    expect(topic.selector).toBe(selector);
-    expect(topic.reveal).toBe(".cm-detail .dropdown-toggle");
+  ])("%s ends on its own item in the case-actions menu", (id, selector) => {
+    const cards = walkthroughFor(TOPIC_BY_ID.get(id));
+    expect(cards.at(-1).selector).toBe(selector);
+    expect(cards.at(-1).reveal).toBe(".cm-detail .dropdown-toggle");
   });
 
-  test("every field inside the create-case view knows how to open it", () => {
-    for (const id of ["upload-jaw-scans", "reference-images", "invite-during-create"]) {
-      expect(TOPIC_BY_ID.get(id).reveal).toBe("#createCaseBtn");
+  // Reopening the view resets the form, so it is opened once and put back by
+  // Cancel — never by pressing Create Case again.
+  test("every step inside the create-case view opens it, and Cancel puts it back", () => {
+    const inside = ANCHORED.filter(({ step }) => listOf(step.reveal).includes("#createCaseBtn"));
+    expect(inside.length).toBeGreaterThan(8);
+    for (const { step } of inside) {
+      expect(step.reveal).toEqual(CREATE_CASE);
+      expect(step.dismiss).toBe("#createCaseUpload .cancel-btn");
     }
   });
 
   // "How do I place a clasp" used to spotlight the whole Components tab strip.
-  // Each per-tab topic now names its own tab, and the tab id it names must be
-  // one the catalog actually renders (data-tab is set from COMPONENT_TABS).
+  // Each tab id must be one the catalog renders — it stamps data-tab from COMPONENT_TABS.
   test.each([
     ["clasps", "clasps"],
     ["bars", "bars"],
     ["major-connector", "major"],
     ["plates", "plate"],
-  ])("%s points at the %s tab, not the whole strip", (id, tabId) => {
-    expect(TOPIC_BY_ID.get(id).selector).toBe(`#componentTabs .component-tab[data-tab="${tabId}"]`);
+  ])("%s opens the %s tab, then points at that tab's item list", (id, tabId) => {
+    const tab = `#componentTabs .component-tab[data-tab="${tabId}"]`;
+    const cards = walkthroughFor(TOPIC_BY_ID.get(id));
+    const open = cards.find((card) => card.selector === tab);
+    const pick = cards.find((card) => card.selector === `#componentItems[data-tab="${tabId}"]`);
+    expect(open.reveal).toBe(PADLOCK);
+    // The tab is what opens the list; the padlock only keeps the step through the
+    // start-of-tour filter while the arches are unlocked.
+    expect(pick.reveal).toEqual([tab, PADLOCK]);
+    expect(cards.indexOf(open)).toBeLessThan(cards.indexOf(pick));
     expect(COMPONENT_TABS.some((t) => t.id === tabId)).toBe(true);
   });
 
   test("only the topic about the tab strip itself targets the whole strip", () => {
-    const onStrip = HELP_TOPICS.filter((t) => t.selector === "#componentTabs").map((t) => t.id);
-    expect(onStrip).toEqual(["component-tabs"]);
+    const onStrip = ANCHORED.filter(({ step }) => step.selector === "#componentTabs").map(({ topic }) => topic.id);
+    expect([...new Set(onStrip)]).toEqual(["component-tabs"]);
   });
 
-  // The Components panel is display:none until the arches are locked, so with
-  // no reveal these answers lost their "Show me" button in select mode — the
-  // state a user asking "how do I place a clasp" is most likely in.
-  test("every topic inside the Components panel locks the arches to reveal it", () => {
-    const inPanel = HELP_TOPICS.filter((t) => /^#componentTabs/.test(t.selector || ""));
-    expect(inPanel.map((t) => t.id)).toEqual(
-      expect.arrayContaining(["component-tabs", "clasps", "bars", "major-connector", "plates"])
-    );
-    for (const topic of inPanel) {
-      expect(topic.reveal).toBe("#jawLockToggleBtn");
+  // The panel is display:none until the arches are locked — the state someone
+  // asking "how do I place a clasp" is most likely in.
+  test("every step inside the Components panel reveals it with the padlock", () => {
+    const inPanel = ANCHORED.filter(({ step }) => inComponentsPanel(step));
+    expect(inPanel.length).toBeGreaterThanOrEqual(10);
+    for (const { step } of inPanel) expect(listOf(step.reveal)).toContain(PADLOCK);
+  });
+
+  // Touch layouts never show the panel (the tooth quick-pick replaces it), so the
+  // padlock would lock the arches for a step with nothing to point at.
+  test("steps inside the Components panel are for a mouse only", () => {
+    for (const { topic, step } of ANCHORED.filter(({ step }) => inComponentsPanel(step))) {
+      expect([topic.id, step.media]).toEqual([topic.id, MOUSE]);
     }
+  });
+
+  test("removing a component shows right-click to a mouse and the eraser to touch", () => {
+    const cards = walkthroughFor(TOPIC_BY_ID.get("remove-component"));
+    expect(cards.find((card) => /right-click/.test(card.text)).media).toBe(MOUSE);
+    expect(cardFor("remove-component", "#removeComponentModeBtn").media).toBe("(pointer: coarse)");
+  });
+
+  // Opening the tab downloads every extra STL — the load that has run iPhones out
+  // of memory — so a walkthrough must never set it off, nor have the user do it.
+  test("no step opens the Extra 3D tab, and the steps on it only point at it", () => {
+    expect(ANCHORED.filter(({ step }) => listOf(step.reveal).includes("#previewTabExtras"))).toEqual([]);
+    const onTab = ANCHORED.filter(({ step }) => listOf(step.selector).includes("#previewTabExtras"));
+    expect(onTab.length).toBeGreaterThan(0);
+    for (const { step } of onTab) expect(step.info).toBe(true);
   });
 
   // The app sidebar is closed whenever the help panel is open — it is the same
   // menu the panel was launched from.
   test("every sidebar item opens the footer menu first", () => {
-    const sidebarTopics = HELP_TOPICS.filter((t) => /^#sidebar/.test(t.selector || ""));
-    expect(sidebarTopics.length).toBeGreaterThan(0);
-    for (const topic of sidebarTopics) {
-      expect(topic.reveal).toBe("#footerMenuBtn");
-    }
+    const sidebarSteps = ANCHORED.filter(({ step }) => /^#sidebar/.test(listOf(step.selector)[0]));
+    expect(sidebarSteps.length).toBeGreaterThan(5);
+    for (const { step } of sidebarSteps) expect(listOf(step.reveal)).toContain("#footerMenuBtn");
   });
 });
 
-// A "Show me" button is only offered when the topic's selector resolves on the
-// page, so a stale selector fails silently — the answer just loses its button.
-// This catches the rename that would cause it.
-describe("highlight selectors still exist in the source", () => {
+// "Show me" is done on the page: the user presses each lit control and the walk
+// moves on, so what counts as pressing it is part of the data.
+describe("Show me is done on the page", () => {
+  const PLACING = ["clasps", "bars", "major-connector", "plates"];
+  const LOCKED = `${PADLOCK}.is-locked`;
+
+  // "How do I place a clasp" stopped at the item list; it now ends on the arch,
+  // where the clasp is actually put on a tooth.
+  test.each([
+    ["clasps", ".clasp-suggestion-group"],
+    ["plates", ".plate-suggestion-visual"],
+  ])("%s ends by clicking one of the marks the pick lights on the arch", (id, marks) => {
+    const last = walkthroughFor(TOPIC_BY_ID.get(id)).at(-1);
+    expect(last.selector).toBe(".jaw-combined-canvas");
+    expect(last.advanceOn).toBe(marks);
+    // With the marks cleared by a stray click, the walk goes back to the list.
+    expect(last.requires).toBe(marks);
+  });
+
+  test("a bar is placed on a lit tooth, and its card says why none may be lit", () => {
+    const last = walkthroughFor(TOPIC_BY_ID.get("bars")).at(-1);
+    expect(last.advanceOn).toBe(".tooth-bar-suggestible");
+    expect(last.requires).toBeUndefined();
+    expect(last.text).toMatch(/mesh/);
+  });
+
+  // Pressing the padlock with the arches locked would unlock them.
+  test.each(PLACING)("%s starts at the padlock, left out once the arches are locked", (id) => {
+    const [first] = walkthroughFor(TOPIC_BY_ID.get(id));
+    expect(first.selector).toBe(PADLOCK);
+    expect(first.skipIf).toBe(LOCKED);
+  });
+
+  test("no step presses the padlock while it is locked", () => {
+    const onPadlock = ANCHORED.filter(({ step }) => step.selector === PADLOCK && !step.info);
+    expect(onPadlock.length).toBeGreaterThan(5);
+    for (const { topic, step } of onPadlock) expect([topic.id, step.skipIf]).toEqual([topic.id, LOCKED]);
+  });
+
+  // The quick-pick replaces the Components panel on touch.
+  test.each(PLACING)("%s picks from the tooth quick-pick on touch", (id) => {
+    const cards = walkthroughFor(TOPIC_BY_ID.get(id));
+    const onTouch = cards.find((card) => card.media === "(pointer: coarse)");
+    expect(onTouch.selector).toBe(".jaw-combined-canvas");
+    expect(onTouch.advanceOn).toBe(".tooth:not(.is-missing)");
+  });
+
+  test("an item list moves on for a pick from it, not a click beside one", () => {
+    const lists = ANCHORED.filter(({ step }) => /^#componentItems/.test(listOf(step.selector)[0]));
+    expect(lists.length).toBeGreaterThanOrEqual(5);
+    for (const { step } of lists) expect(step.advanceOn).toBe(".component-item");
+  });
+
+  // The pencils, status pill, download and bin inside a row have jobs of their own.
+  test("picking a case is a click on its row, not the buttons in it", () => {
+    const rows = ANCHORED.filter(({ step }) => listOf(step.selector).includes(".cm-table tbody tr"));
+    expect(rows.length).toBeGreaterThan(10);
+    for (const { step } of rows) expect(step.advanceOn).toBe(".cm-row");
+  });
+
+  test("removing a component is a right-click, then a pick from the list it opens", () => {
+    const cards = walkthroughFor(TOPIC_BY_ID.get("remove-component"));
+    const rightClick = cards.find((card) => card.rightClick);
+    expect(rightClick.media).toBe(MOUSE);
+    const list = cards.find((card) => /\.remove-component-item-btn/.test(card.advanceOn || ""));
+    expect(list.follows).toBe(true);
+    // Its Cancel counts as well — the way out of a list with nothing to remove.
+    expect(list.advanceOn).toMatch(/#removeComponentDialogCancel/);
+    expect(cards.indexOf(rightClick)).toBeLessThan(cards.indexOf(list));
+  });
+
+  // A walk is lost with the page it runs on.
+  test("a step that would leave the page before the walk is over only points", () => {
+    const due = walkthroughFor(TOPIC_BY_ID.get("due-date"));
+    expect(due[0].selector).toBe(".start-case-button");
+    expect(due[0].info).toBe(true);
+  });
+
+  test("steps for typing keep their Next, and no step is both", () => {
+    expect(cardFor("create-case", "#createCaseForm .cc-form-grid").next).toBe(true);
+    expect(cardFor("case-chat", "#chat-input-area").next).toBe(true);
+    for (const { topic, step } of ANCHORED) expect([topic.id, step.next && step.info]).not.toEqual([topic.id, true]);
+  });
+});
+
+// A step whose control no longer resolves is dropped from the walkthrough without
+// a word, and a topic that loses them all loses its Show me. This catches the
+// rename that would cause it. What counts as using a control is checked too — a
+// renamed mark would leave the walk waiting on a click that never counts.
+describe("step selectors still exist in the source", () => {
   const selectors = [
-    ...new Set(HELP_TOPICS.flatMap((t) => [t.selector, t.reveal]).filter(Boolean)),
+    ...new Set(
+      ANCHORED.flatMap(({ step }) =>
+        [
+          ...listOf(step.selector),
+          ...listOf(step.reveal),
+          step.dismiss,
+          ...listOf(step.skipIf),
+          ...listOf(step.requires),
+          ...String(step.advanceOn || "").split(","),
+        ].map((s) => s && s.trim())
+      ).filter(Boolean)
+    ),
   ];
 
   test("there are selectors to check", () => {
-    expect(selectors.length).toBeGreaterThan(5);
+    expect(selectors.length).toBeGreaterThan(40);
   });
 
   test.each(selectors)("%s is defined somewhere in the app", (selector) => {

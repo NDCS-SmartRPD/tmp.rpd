@@ -1,23 +1,21 @@
 // Slide-in panel answering "how do I…", built on first open, answered by
 // `provider` (helpMatcher.js). A conversation lasts one open; nothing is stored.
 
-import { PAGE_LABELS, PAGE_PATHS, TOPIC_BY_ID } from "./helpTopics.js";
+import { PAGE_LABELS, PAGE_PATHS, TOPIC_BY_ID, stepText, walkthroughFor } from "./helpTopics.js";
 import { localProvider, relatedTopics, suggestionsFor } from "./helpMatcher.js";
 import { appRoot, currentPageId, ensureStylesheet } from "./pageContext.js";
+import { canStartWalkthrough, startWalkthrough } from "./pageTour.js";
 
 export { currentPageId };
 
 const TRANSCRIPT_MAX = 30;
-const HIGHLIGHT_MS = 6000;
 const CLOSE_MS = 220;
-const REVEAL_TIMEOUT_MS = 1500;
 
 let provider = localProvider;
 let root = null;          // #help-bot, built on first open
 let logEl = null;
 let inputEl = null;
 let transcript = [];      // [{ role: "bot" | "user", text, topicId? }]
-let clearHighlight = null;
 let closeTimer = null;
 
 // Swap the answer engine (e.g. a backend-backed one). Contract:
@@ -31,118 +29,15 @@ function hrefForPage(pageId) {
   return path ? new URL(appRoot() + path, window.location.href).href : null;
 }
 
-// ------------------------------------------------------------------ highlight
+// -------------------------------------------------------------------- show me
 
-function isVisible(el) {
-  return !!el && el.getClientRects().length > 0;
-}
-
-const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
-
-// Poll until a control is on screen, after opening the view containing it.
-// Everything appears synchronously today; the slack survives a future animation.
-function waitForVisible(selector, timeout = REVEAL_TIMEOUT_MS) {
-  return new Promise((resolve) => {
-    const deadline = Date.now() + timeout;
-    const tick = () => {
-      const el = safeQuery(selector);
-      if (isVisible(el)) return resolve(el);
-      if (Date.now() >= deadline) return resolve(null);
-      requestAnimationFrame(tick);
-    };
-    tick();
-  });
-}
-
-// Clicks `reveal` and waits for the real target rather than the opener. Only
-// when the target is hidden: reopening create-case resets the form.
-async function resolveTarget(topic) {
-  const existing = safeQuery(topic.selector);
-  if (isVisible(existing)) return existing;
-  if (!topic.reveal) return null;
-  const opener = safeQuery(topic.reveal);
-  if (!isVisible(opener)) return null;
-
-  // Wait out the click that got us here: the case-actions dropdown closes on any
-  // outside click, so opening it mid-dispatch would let that same event shut it.
-  await nextFrame();
-  opener.click();
-
-  const el = await waitForVisible(topic.selector);
-  // Confirm it stayed put: a container that opens and immediately closes again
-  // must count as a failed reveal, not a highlight on something invisible.
-  await nextFrame();
-  return isVisible(el) ? el : null;
-}
-
-// Same spotlight trick as pageTour.js: a huge box-shadow spread paints
-// everywhere OUTSIDE the element's rect, so the control shows through untouched.
-let spotlightEl = null;
-let spotlightCleanup = null;
-
-function ensureSpotlight() {
-  if (spotlightEl) return spotlightEl;
-  spotlightEl = document.createElement("div");
-  spotlightEl.className = "hb-spotlight";
-  document.body.appendChild(spotlightEl);
-  return spotlightEl;
-}
-
-function positionSpotlight(el) {
-  const r = el.getBoundingClientRect();
-  const pad = 6;
-  spotlightEl.style.top = `${r.top - pad}px`;
-  spotlightEl.style.left = `${r.left - pad}px`;
-  spotlightEl.style.width = `${r.width + pad * 2}px`;
-  spotlightEl.style.height = `${r.height + pad * 2}px`;
-}
-
-// Follows `el` through the smooth scroll and any resize. Taken down with the
-// ring — the dimming is the pointer, so it must never outlive it.
-function showSpotlight(el) {
-  hideSpotlight();
-  ensureSpotlight();
-  const reposition = () => positionSpotlight(el);
-  reposition();
-  window.addEventListener("scroll", reposition, true);
-  window.addEventListener("resize", reposition);
-  spotlightCleanup = () => {
-    window.removeEventListener("scroll", reposition, true);
-    window.removeEventListener("resize", reposition);
-  };
-  requestAnimationFrame(() => spotlightEl.classList.add("is-visible"));
-}
-
-function hideSpotlight() {
-  spotlightEl?.classList.remove("is-visible");
-  spotlightCleanup?.();
-  spotlightCleanup = null;
-}
-
-// Scrolls the topic's control into view and stage-lights it like a tour step.
-// False when it isn't reachable here, so the caller can offer a deep link.
-async function showControl(topic) {
-  // Resolved before the panel closes: a reveal that fails must not leave the
-  // user with a dismissed panel and nothing highlighted.
-  const el = await resolveTarget(topic);
-  if (!isVisible(el)) return false;
-
+// The answer's steps, walked as a mini tour on this page. Checked before the
+// panel closes, so a walkthrough with nothing to point at never leaves the user
+// with neither. The conversation is kept — a walkthrough is a detour, not an exit.
+function showMe(walkthrough) {
+  if (!canStartWalkthrough(walkthrough)) return;
   closePanel({ keepTranscript: true });
-  clearHighlight?.();
-  el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
-  el.classList.add("hb-highlight");
-  showSpotlight(el);
-
-  const done = () => {
-    el.classList.remove("hb-highlight");
-    hideSpotlight();
-    document.removeEventListener("pointerdown", done, true);
-    clearHighlight = null;
-  };
-  clearHighlight = done;
-  document.addEventListener("pointerdown", done, true);
-  setTimeout(() => clearHighlight === done && done(), HIGHLIGHT_MS);
-  return true;
+  startWalkthrough(walkthrough);
 }
 
 // --------------------------------------------------------------- panel markup
@@ -238,7 +133,7 @@ function renderChips(parent, topics, label) {
 }
 
 // One answer: heading, prose, numbered steps, then the actions it supports on
-// this page (point at the control, or open the page it lives on).
+// this page (walk the steps, or open the page it lives on).
 function renderAnswer(topic) {
   const el = bubble("bot");
 
@@ -257,7 +152,7 @@ function renderAnswer(topic) {
     list.className = "hb-steps";
     for (const step of topic.steps) {
       const item = document.createElement("li");
-      item.textContent = step;
+      item.textContent = stepText(step);
       list.appendChild(item);
     }
     el.appendChild(list);
@@ -267,17 +162,13 @@ function renderAnswer(topic) {
   actions.className = "hb-actions";
 
   const onThisPage = !topic.page || topic.page === currentPageId();
-  // Reachable either directly, or by opening the view it lives in.
-  const canPoint =
-    onThisPage &&
-    topic.selector &&
-    (isVisible(safeQuery(topic.selector)) || (topic.reveal && isVisible(safeQuery(topic.reveal))));
-  if (canPoint) {
+  const walkthrough = onThisPage ? walkthroughFor(topic) : [];
+  if (canStartWalkthrough(walkthrough)) {
     const show = document.createElement("button");
     show.type = "button";
     show.className = "hb-action";
     show.textContent = "Show me";
-    show.addEventListener("click", () => showControl(topic));
+    show.addEventListener("click", () => showMe(walkthrough));
     actions.appendChild(show);
   }
 
@@ -297,14 +188,6 @@ function renderAnswer(topic) {
   renderChips(el, relatedTopics(topic), "Related");
   scrollToEnd();
   return el;
-}
-
-function safeQuery(selector) {
-  try {
-    return document.querySelector(selector);
-  } catch {
-    return null;
-  }
 }
 
 function renderUnsure(alternates) {
