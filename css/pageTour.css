@@ -88,6 +88,67 @@ html.pt-walking .app-confirm-overlay {
   z-index: 10060;
 }
 
+/* "Click here" for a step done in the lit control's white space, placed in the
+   middle of its widest stretch by pageTour.js. It pings when a click lands on
+   something drawn there instead. */
+.pt-spot {
+  position: absolute;
+  box-sizing: border-box;
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px;
+  border-radius: 50%;
+  border: 2px solid var(--pt-primary);
+  background: rgba(59, 174, 149, 0.16);
+  pointer-events: none;
+}
+.pt-spot[hidden] {
+  display: none;
+}
+.pt-spot::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  border: 2px solid var(--pt-primary);
+  animation: pt-ripple 1.6s ease-out infinite;
+}
+.pt-spot::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: var(--pt-primary);
+}
+.pt-spot-label {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--pt-primary);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.2);
+}
+.pt-spot.is-pinged {
+  animation: pt-spot-ping 0.5s ease-out;
+}
+@keyframes pt-ripple {
+  from { transform: scale(1); opacity: 0.9; }
+  to { transform: scale(2.4); opacity: 0; }
+}
+@keyframes pt-spot-ping {
+  35% { transform: scale(1.5); }
+}
+
 /* Ring on the control so the spotlight reads as deliberate, not as a gap.
    Never raise the target's z-index: tall targets then cover the card's Next. */
 .pt-target {
@@ -303,7 +364,9 @@ html.pt-walking .app-confirm-overlay {
     transition: none;
   }
   .pt-mask.is-nudged,
-  .pt-hint::before {
+  .pt-hint::before,
+  .pt-spot::before,
+  .pt-spot.is-pinged {
     animation: none;
   }
 }

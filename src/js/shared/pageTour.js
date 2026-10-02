@@ -16,6 +16,8 @@ const REVEAL_TIMEOUT_MS = 1500;
 const AUTOSTART_TIMEOUT_MS = 4000;
 const WATCH_MS = 120;       // how often a walkthrough checks on the page
 const LOST_GRACE_MS = 350;  // a control the page redraws is back within this
+const SPOT_GRID = 28;       // px between the points a blank step tries for white space
+const SPOT_RETRY_MS = 600;  // how often to look again for white space that was covered
 const CARD_GAP = 14;      // space between the spotlight and the card
 const VIEWPORT_PAD = 12;  // keep the card this far off every edge
 
@@ -29,9 +31,15 @@ const SHEET_MAX_FRACTION = 0.6; // the sheet never eats more of the screen than 
 // delete button inside a case row.
 const CONTROLS = "button, a[href], input, select, textarea, [role='button'], [data-action]";
 
+// The page's pop-ups that rise above a walk (see pageTour.css), and the first
+// lock's material prompt. A walk waits while one is open, unless its next step
+// is in it — the tooth quick-pick, still being picked from, is not done yet.
+const RAISED = ".tcal-pop, .tsel-pop, .tooth-quickpick-backdrop, .tooth-radial-backdrop, .app-confirm-overlay, #jawMaterialGate";
+
 let root = null;      // #page-tour, built on first run
 let maskEl = null;
 let blockEl = null;
+let spotEl = null;
 let cardEl = null;
 let steps = [];
 let index = 0;
@@ -233,6 +241,7 @@ function buildOverlay() {
   root.innerHTML = `
     <div class="pt-mask" id="ptMask"></div>
     <div class="pt-block" id="ptBlock"></div>
+    <div class="pt-spot" id="ptSpot" aria-hidden="true" hidden><span class="pt-spot-label" id="ptSpotLabel"></span></div>
     <div class="pt-card" id="ptCard" role="dialog" aria-modal="true" aria-labelledby="ptTitle">
       <div class="pt-card-head">
         <span class="pt-step-count" id="ptCount"></span>
@@ -255,6 +264,7 @@ function buildOverlay() {
 
   maskEl = root.querySelector("#ptMask");
   blockEl = root.querySelector("#ptBlock");
+  spotEl = root.querySelector("#ptSpot");
   cardEl = root.querySelector("#ptCard");
 
   root.querySelector("#ptSkip").addEventListener("click", () => endTour());
@@ -357,6 +367,13 @@ function nudge() {
   maskEl.classList.add("is-nudged");
 }
 
+function pingSpot() {
+  if (spotEl.hidden) return;
+  spotEl.classList.remove("is-pinged");
+  void spotEl.offsetWidth; // restart the animation
+  spotEl.classList.add("is-pinged");
+}
+
 // Events inside the lit control, in a walkthrough. They reach the page — that is
 // the point — and one that does the step moves the walk on once the page has
 // handled it. `advanceOn` narrows which clicks count; the rest of the control
@@ -384,6 +401,17 @@ function onSpotlightEvent(e) {
   if (mode === "look") {
     swallow(e);
     if (e.type === "click") goTo(index + 1);
+    return;
+  }
+  // Done in the control's white space. What is drawn in it, and the controls in
+  // it, keep still — the spot shows where to click instead.
+  if (step.blank) {
+    if (!e.target.closest(step.blank) && !e.target.closest(CONTROLS)) {
+      if (e.type === "click") noteUsed(run);
+      return;
+    }
+    swallow(e);
+    if (e.type === "click" || e.type === "contextmenu") pingSpot();
     return;
   }
 
@@ -434,16 +462,22 @@ function isCovered(el) {
   return under;
 }
 
+const raisedPopup = () => [...document.querySelectorAll(RAISED)].find(isVisible) || null;
+
 function nextIsReady() {
   const next = steps[index + 1];
   if (!next) return false;
-  return !selectorList(next).length || !!findTarget(next);
+  const anchored = selectorList(next).length > 0;
+  const el = anchored ? findTarget(next) : null;
+  if (anchored && !el) return false;
+  const raised = raisedPopup();
+  return !raised || raised.contains(el);
 }
 
 // The control the user pressed didn't open the next one, but its opener is here.
 function canRevealNext() {
   const next = steps[index + 1];
-  return !!next && !next.requires && !!firstVisible(revealList(next));
+  return !!next && !next.requires && !raisedPopup() && !!firstVisible(revealList(next));
 }
 
 // A walkthrough follows the page rather than the other way round: it moves on
@@ -472,6 +506,11 @@ function watchStep() {
     run.lostSince = 0;
     const clickable = hasClickables(step, currentTarget);
     if (clickable !== run.clickable) renderControls(step, clickable);
+    // No white space found while something lay over it: look again.
+    if (step.blank && !run.spot && Date.now() - run.spotTriedAt >= SPOT_RETRY_MS) {
+      run.spotKey = "";
+      positionFor(currentTarget);
+    }
     return;
   }
   if (!run.hadTarget) return;
@@ -571,6 +610,7 @@ function positionFor(el) {
     currentTarget = null;
     lastBox = "";
     setHole(null);
+    hideSpot();
     maskEl.classList.add("is-empty");
     maskEl.style.top = `${window.innerHeight / 2}px`;
     maskEl.style.left = `${window.innerWidth / 2}px`;
@@ -591,6 +631,61 @@ function positionFor(el) {
   setHole({ top: r.top - pad, left: r.left - pad, right: r.right + pad, bottom: r.bottom + pad });
   if (isSheetLayout()) placeCardAsSheet(r);
   else placeCardNear(r);
+  placeSpot(el, r);
+}
+
+// The middle of the widest white stretch in a blank step's control: the point
+// furthest from anything a click would land on instead. Tried on a grid with the
+// hole cut, so each point hits what a click there would. Relative to `box`.
+function blankSpot(step, target, box) {
+  if (typeof document.elementFromPoint !== "function") return null;
+  const cols = Math.floor(box.width / SPOT_GRID);
+  const rows = Math.floor(box.height / SPOT_GRID);
+  if (cols < 1 || rows < 1) return null;
+  const at = (c, r) => [(c + 0.5) * (box.width / cols), (r + 0.5) * (box.height / rows)];
+  const isWhite = (el) => !!el && target.contains(el) && !el.closest(step.blank) && !el.closest(CONTROLS);
+  const white = [];
+  const taken = [];
+  for (let r = 0; r < rows; r += 1) {
+    for (let c = 0; c < cols; c += 1) {
+      const [x, y] = at(c, r);
+      (isWhite(document.elementFromPoint(box.left + x, box.top + y)) ? white : taken).push([c, r]);
+    }
+  }
+  let best = null;
+  for (const [c, r] of white) {
+    // The control's edge counts as taken, so the spot sits inside the white.
+    let room = Math.min(c + 1, r + 1, cols - c, rows - r);
+    for (const [tc, tr] of taken) room = Math.min(room, Math.hypot(c - tc, r - tr));
+    // Of points with as much room, the one nearest the middle of the control.
+    const off = Math.hypot(c - (cols - 1) / 2, r - (rows - 1) / 2);
+    if (!best || room > best.room || (room === best.room && off < best.off)) best = { room, off, c, r };
+  }
+  if (!best) return null;
+  const [x, y] = at(best.c, best.r);
+  return { x, y };
+}
+
+// Found again only when the control or the card moves: the card slides into
+// place, and the white under where it lands is not white.
+function placeSpot(el, box) {
+  const run = stepRun;
+  if (!walking || !run?.resolved || !run.step.blank || el !== currentTarget) return hideSpot();
+  const key = `${boxOf(el)}|${boxOf(cardEl)}`;
+  if (run.spotKey !== key) {
+    run.spotKey = key;
+    run.spotTriedAt = Date.now();
+    run.spot = blankSpot(run.step, el, box);
+  }
+  if (!run.spot) return hideSpot();
+  spotEl.style.left = `${Math.round(box.left + run.spot.x)}px`;
+  spotEl.style.top = `${Math.round(box.top + run.spot.y)}px`;
+  root.querySelector("#ptSpotLabel").textContent = `${isCoarse() ? "Tap" : "Click"} here`;
+  spotEl.hidden = false;
+}
+
+function hideSpot() {
+  if (spotEl) spotEl.hidden = true;
 }
 
 function centreCard() {
@@ -706,10 +801,12 @@ function renderDots() {
   });
 }
 
+const isCoarse = () => typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+
 function hintFor(step, last) {
-  const coarse = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
-  const verb = step.rightClick ? "Right-click in" : coarse ? "Tap" : "Click";
-  return `${verb} the highlighted area to ${last ? "finish" : "continue"}.`;
+  const verb = step.rightClick ? "Right-click in" : isCoarse() ? "Tap" : "Click";
+  const where = step.blank ? "any white space" : "the highlighted area";
+  return `${verb} ${where} to ${last ? "finish" : "continue"}.`;
 }
 
 // A walkthrough step moves on when its control is used, so Next shows only for
@@ -758,7 +855,18 @@ async function renderStep() {
   // move is backwards, where the next step reopens whatever it needs.
   if (openedByTour && revealKey(step) !== openedByTour.key) closeOpenedContainer();
   if (revealKey(step) !== openRun) openRun = "";
-  const run = { step, resolved: false, hadTarget: false, clickable: false, reopened: false, usedAt: 0, lostSince: 0 };
+  const run = {
+    step,
+    resolved: false,
+    hadTarget: false,
+    clickable: false,
+    reopened: false,
+    usedAt: 0,
+    lostSince: 0,
+    spot: null,
+    spotKey: "",
+    spotTriedAt: 0,
+  };
   stepRun = run;
 
   root.querySelector("#ptCount").textContent = `Step ${index + 1} of ${steps.length}`;
@@ -817,6 +925,7 @@ function goTo(next) {
   if (next >= steps.length) return endTour({ completed: true });
   clearTargetMark();
   setHole(null);
+  hideSpot();
   index = next;
   renderStep();
 }
@@ -894,6 +1003,7 @@ export function endTour({ completed = false } = {}) {
   openRun = "";
   clearTargetMark();
   setHole(null);
+  hideSpot();
   cancelAnimationFrame(reflowFrame);
   reflowFrame = 0;
   document.documentElement.classList.remove("pt-walking");

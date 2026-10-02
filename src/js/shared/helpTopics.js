@@ -26,6 +26,8 @@
 //   requires    the control only counts as there while this shows as well
 //   follows     an earlier step puts it on screen, so it is kept without a reveal
 //   skipIf      left out while this is on screen — it is done already
+//   blank       only a click in the control's white space counts — not on these,
+//               nor on a control in it; a spot marks where to click
 
 // Page ids → the label used in "Open <page>" buttons and greetings.
 export const PAGE_LABELS = {
@@ -128,6 +130,19 @@ const pickOnTouch = (text) => ({ text, selector: ARCHES, advanceOn: PRESENT_TOOT
 // The picked component goes where the arch marks it: only those marks count,
 // and the walk steps back to the list if a stray click clears them.
 const placeAt = (marks, text) => ({ text, selector: ARCHES, advanceOn: marks, requires: marks });
+
+// Rest seats and every assembly go on a rest-seat mark; an onlay rest has none
+// and goes on a back tooth itself.
+const REST_SEAT_MARKS = ".rest-suggestion-group, .rest-suggestion-point";
+const REST_MARKS = `${REST_SEAT_MARKS}, .tooth-onlay-suggestible`;
+
+// A click in the arch's white space, away from the teeth and their marks, lets
+// go of the pick: the marks clear and what was placed stays.
+const FINISH_PLACING = {
+  text: "Click any white space away from the teeth to finish placing — the marks clear and what you placed stays.",
+  selector: ARCHES,
+  blank: ".tooth, .tooth-suggestions",
+};
 
 // A tab in the Components panel above 1200px, a sheet from the header's note
 // button below it; the padlock is last for the same filter reason as above.
@@ -734,7 +749,7 @@ export const HELP_TOPICS = [
     keywords: ["component", "tab", "mesh", "assembly", "rests", "clasps", "bars", "plate", "major", "connector", "catalog", "palette"],
     phrases: ["what are the component tabs", "where do i find clasps", "what is in the components panel"],
     answer:
-      "In design mode the Components panel groups everything into tabs: MESH, RESTS, CLASPS, BARS, MAJOR CONNECTOR, PLATE, ASSEMBLY and CASE NOTE. Pick a tab, pick an item, then select the tooth to place it on.",
+      "In design mode the Components panel groups everything into tabs: MESH, RESTS, CLASPS, BARS, MAJOR CONNECTOR, PLATE, ASSEMBLY and CASE NOTE. Pick a tab, pick an item, select the tooth to place it on, then click any white space to finish.",
     steps: [
       LOCK_STEP,
       {
@@ -752,8 +767,62 @@ export const HELP_TOPICS = [
         advanceOn: ".component-item",
       },
       { text: "Select the tooth on the arch to place it.", selector: ARCHES, advanceOn: ".tooth, .tooth-suggestions" },
+      FINISH_PLACING,
     ],
-    related: ["clasps", "bars", "major-connector", "remove-component"],
+    related: ["mesh", "rests", "clasps", "bars", "assemblies", "remove-component"],
+  },
+  {
+    id: "mesh",
+    title: "Place mesh",
+    page: "annotation_2d",
+    keywords: ["mesh", "saddle", "retention", "tori", "stripe", "flange", "place"],
+    phrases: [
+      "how do i add mesh",
+      "how do i place a mesh",
+      "how do i add mesh to a missing tooth",
+      "how do i change the mesh type",
+    ],
+    answer:
+      "Mesh goes on missing teeth. Open the MESH tab, choose the mesh type, then select a missing tooth. Double-click a mesh type in the list to put it on every missing tooth at once, or double-click a tooth to change its mesh to the type you picked. A full acrylic case takes Mesh Flange only.",
+    // No `requires` on the placing step: with no tooth marked missing there is
+    // nowhere to put mesh, and its card is what says why.
+    steps: [
+      LOCK_STEP,
+      openTab("mesh", "Open the MESH tab in the Components panel."),
+      pickFromTab("mesh", "Choose the mesh type."),
+      pickOnTouch("In Mobile: tap a present tooth, then pick MESH and the mesh from the menu that opens."),
+      {
+        text: "Select a missing tooth — they are shaded grey — to put the mesh there. Mesh only goes where a tooth is missing.",
+        selector: ARCHES,
+        advanceOn: ".tooth.is-missing",
+      },
+      FINISH_PLACING,
+    ],
+    related: ["component-tabs", "select-teeth", "bars"],
+  },
+  {
+    id: "rests",
+    title: "Place a rest",
+    page: "annotation_2d",
+    keywords: ["rest", "seat", "onlay", "occlusal", "cingulum", "support", "place"],
+    phrases: [
+      "how do i add a rest",
+      "how do i place a rest",
+      "how do i place a rest seat",
+      "how do i add an onlay rest",
+      "how do i add an occlusal rest",
+    ],
+    answer:
+      "Open the RESTS tab and choose Rest Seat or Onlay Rest. A Rest Seat goes on one of the rest marks shown on each tooth — mesial, distal or lingual — and on a front tooth the lingual mark asks which cingulum rest you want. An Onlay Rest has no marks: select a back tooth and it covers the biting surface. Rests are not available for a full acrylic case.",
+    steps: [
+      LOCK_STEP,
+      openTab("rests", "Open the RESTS tab in the Components panel."),
+      pickFromTab("rests", "Choose Rest Seat or Onlay Rest."),
+      pickOnTouch("In Mobile: tap a tooth, then pick RESTS and the rest from the menu that opens."),
+      placeAt(REST_MARKS, "Select a rest mark on a tooth for a rest seat, or a back tooth for an onlay rest."),
+      FINISH_PLACING,
+    ],
+    related: ["component-tabs", "clasps", "assemblies"],
   },
   {
     id: "clasps",
@@ -769,6 +838,7 @@ export const HELP_TOPICS = [
       pickFromTab("clasps", "Choose the clasp type."),
       pickOnTouch("In Mobile: tap a tooth, then pick CLASPS and the clasp type from the menu that opens."),
       placeAt(".clasp-suggestion-group", "Select a highlighted dot beside a tooth — the clasp goes on that side."),
+      FINISH_PLACING,
     ],
     related: ["component-tabs", "bars", "remove-component"],
   },
@@ -780,8 +850,8 @@ export const HELP_TOPICS = [
     phrases: ["how do i add a bar", "how do i place a bar"],
     answer:
       "Open the BARS tab, choose the bar, then select the tooth. Placing a bar also adds its matching reciprocating clasp automatically.",
-    // No `requires` on the last step: with no mesh near, nothing lights up, and
-    // its card is what says why.
+    // No `requires` on the placing step: with no mesh near, nothing lights up,
+    // and its card is what says why.
     steps: [
       LOCK_STEP,
       openTab("bars", "Open the BARS tab in the Components panel."),
@@ -792,8 +862,9 @@ export const HELP_TOPICS = [
         selector: ARCHES,
         advanceOn: ".tooth-bar-suggestible",
       },
+      FINISH_PLACING,
     ],
-    related: ["component-tabs", "clasps", "major-connector"],
+    related: ["component-tabs", "mesh", "clasps", "major-connector"],
   },
   {
     id: "major-connector",
@@ -808,7 +879,10 @@ export const HELP_TOPICS = [
       openTab("major", "Open the MAJOR CONNECTOR tab in the Components panel."),
       pickFromTab("major", "Choose the connector for that arch."),
       pickOnTouch("In Mobile: tap a tooth, then pick MAJOR CONNECTOR and the connector from the menu that opens."),
-      { text: "Check the arch drawing to confirm it covers the teeth you expect.", selector: ARCHES, info: true },
+      {
+        ...FINISH_PLACING,
+        text: "Check the arch drawing covers the teeth you expect, then click any white space away from the teeth to finish.",
+      },
     ],
     related: ["component-tabs", "bars", "plates"],
   },
@@ -831,8 +905,39 @@ export const HELP_TOPICS = [
         ...placeAt(".plate-suggestion-visual", "Select the cyan marker on a tooth to place the plating there."),
         media: MOUSE,
       },
+      FINISH_PLACING,
     ],
     related: ["component-tabs", "major-connector", "remove-component"],
+  },
+  {
+    id: "assemblies",
+    title: "Place an assembly",
+    page: "annotation_2d",
+    keywords: ["assembly", "assemblies", "rpi", "rpa", "circum", "circumferential", "continuous", "combine", "place"],
+    phrases: [
+      "how do i add an assembly",
+      "how do i place an assembly",
+      "how do i place an rpi",
+      "how do i add an rpa",
+      "how do i place a circumferential assembly",
+    ],
+    answer:
+      "An assembly places a rest seat together with the clasp that goes with it. Open the ASSEMBLY tab, choose one, then select a rest mark on a tooth. Simple, Back-action and Half & Half go on any back tooth; Continuous and Combine only on a side facing a gap; RPI and RPA only on the mesial of a distal-extension abutment, and RPI also needs mesh on the saddle.",
+    // No `requires` on the placing step: most assemblies need a gap, so a pick
+    // can light nothing, and its card is what says why.
+    steps: [
+      LOCK_STEP,
+      openTab("assembly", "Open the ASSEMBLY tab in the Components panel."),
+      pickFromTab("assembly", "Choose the assembly."),
+      pickOnTouch("In Mobile: tap a tooth, then pick ASSEMBLY and the assembly from the menu that opens."),
+      {
+        text: "Select a rest mark to place it there. RPI and RPA show marks only on a distal-extension abutment, Continuous and Combine only beside a gap.",
+        selector: ARCHES,
+        advanceOn: REST_SEAT_MARKS,
+      },
+      FINISH_PLACING,
+    ],
+    related: ["component-tabs", "rests", "clasps"],
   },
   {
     id: "remove-component",
@@ -846,6 +951,7 @@ export const HELP_TOPICS = [
       "right click to remove",
       "remove a clasp",
       "delete a clasp",
+      "remove a rest",
     ],
     answer:
       "With a mouse, right-click the tooth that carries the component — left-click always adds, right-click opens the Remove component list for that tooth. On a touch screen there is no right-click: tap the eraser beside the padlock to switch to remove mode, then tap the tooth. Either way, pick what to take off from the list. The undo button beside the padlock steps back through recent changes, and Clear Top / Clear Bottom strips every component from one jaw.",

@@ -64,6 +64,20 @@ describe("findMatches()", () => {
       .toContain("undercut-heatmap");
   });
 
+  // All used to land on the Components tabs overview.
+  test("placing mesh, a rest or an assembly has its own answer", () => {
+    for (const [question, id] of [
+      ["how do i place a mesh", "mesh"],
+      ["how do i place a rest", "rests"],
+      ["how do i place an assembly", "assemblies"],
+      ["how do i place an rpi", "assemblies"],
+      ["how do i remove a rest", "remove-component"],
+      ["how do i place a clasp", "clasps"],
+    ]) {
+      expect([question, idsOf(findMatches(question, HELP_TOPICS, { pageId: "annotation_2d" }))[0]]).toEqual([question, id]);
+    }
+  });
+
   test("returns nothing for a question made only of stopwords", () => {
     expect(findMatches("how do i")).toEqual([]);
   });
@@ -331,10 +345,13 @@ describe("Show me points at the control, not at what opens it", () => {
   // "How do I place a clasp" used to spotlight the whole Components tab strip.
   // Each tab id must be one the catalog renders — it stamps data-tab from COMPONENT_TABS.
   test.each([
+    ["mesh", "mesh"],
+    ["rests", "rests"],
     ["clasps", "clasps"],
     ["bars", "bars"],
     ["major-connector", "major"],
     ["plates", "plate"],
+    ["assemblies", "assembly"],
   ])("%s opens the %s tab, then points at that tab's item list", (id, tabId) => {
     const tab = `#componentTabs .component-tab[data-tab="${tabId}"]`;
     const cards = walkthroughFor(TOPIC_BY_ID.get(id));
@@ -396,27 +413,60 @@ describe("Show me points at the control, not at what opens it", () => {
 // "Show me" is done on the page: the user presses each lit control and the walk
 // moves on, so what counts as pressing it is part of the data.
 describe("Show me is done on the page", () => {
-  const PLACING = ["clasps", "bars", "major-connector", "plates"];
+  const PLACING = ["mesh", "rests", "clasps", "bars", "major-connector", "plates", "assemblies"];
   const LOCKED = `${PADLOCK}.is-locked`;
+  const REST_SEAT_MARKS = ".rest-suggestion-group, .rest-suggestion-point";
 
-  // "How do I place a clasp" stopped at the item list; it now ends on the arch,
-  // where the clasp is actually put on a tooth.
+  // The step that places it, just before the one that lets go of the pick.
+  const placing = (id) => walkthroughFor(TOPIC_BY_ID.get(id)).at(-2);
+
+  // "How do I place a clasp" stopped at the item list; it now goes on to the
+  // arch, where the clasp is actually put on a tooth. An onlay rest shows no
+  // marks, so the back teeth it can go on count for it.
   test.each([
+    ["rests", `${REST_SEAT_MARKS}, .tooth-onlay-suggestible`],
     ["clasps", ".clasp-suggestion-group"],
     ["plates", ".plate-suggestion-visual"],
-  ])("%s ends by clicking one of the marks the pick lights on the arch", (id, marks) => {
-    const last = walkthroughFor(TOPIC_BY_ID.get(id)).at(-1);
-    expect(last.selector).toBe(".jaw-combined-canvas");
-    expect(last.advanceOn).toBe(marks);
+  ])("%s is placed by clicking one of the marks the pick lights on the arch", (id, marks) => {
+    const step = placing(id);
+    expect(step.selector).toBe(".jaw-combined-canvas");
+    expect(step.advanceOn).toBe(marks);
     // With the marks cleared by a stray click, the walk goes back to the list.
-    expect(last.requires).toBe(marks);
+    expect(step.requires).toBe(marks);
   });
 
   test("a bar is placed on a lit tooth, and its card says why none may be lit", () => {
-    const last = walkthroughFor(TOPIC_BY_ID.get("bars")).at(-1);
-    expect(last.advanceOn).toBe(".tooth-bar-suggestible");
-    expect(last.requires).toBeUndefined();
-    expect(last.text).toMatch(/mesh/);
+    const step = placing("bars");
+    expect(step.advanceOn).toBe(".tooth-bar-suggestible");
+    expect(step.requires).toBeUndefined();
+    expect(step.text).toMatch(/mesh/);
+  });
+
+  // An arch with no tooth marked missing has nowhere to take mesh.
+  test("mesh is placed on a missing tooth, and its card says why none may count", () => {
+    const step = placing("mesh");
+    expect(step.advanceOn).toBe(".tooth.is-missing");
+    expect(step.requires).toBeUndefined();
+    expect(step.text).toMatch(/missing/);
+  });
+
+  // RPI, RPA, Continuous and Combine all need a gap, which a full arch lacks.
+  test("an assembly is placed on a lit rest seat, and its card says why none may be lit", () => {
+    const step = placing("assemblies");
+    expect(step.advanceOn).toBe(REST_SEAT_MARKS);
+    expect(step.requires).toBeUndefined();
+    expect(step.text).toMatch(/RPI/);
+    expect(step.text).toMatch(/gap/);
+  });
+
+  // The app keeps the pick, and its marks, until a click in the arch's white
+  // space; a walk that stopped at the mark left the user there.
+  test.each([...PLACING, "component-tabs"])("%s finishes with a click in the arch's white space", (id) => {
+    const last = walkthroughFor(TOPIC_BY_ID.get(id)).at(-1);
+    expect(last.selector).toBe(".jaw-combined-canvas");
+    expect(last.blank).toBe(".tooth, .tooth-suggestions");
+    expect(last.text).toMatch(/white space/);
+    expect(last.info).toBeUndefined();
   });
 
   // Pressing the padlock with the arches locked would unlock them.
@@ -492,6 +542,7 @@ describe("step selectors still exist in the source", () => {
           step.dismiss,
           ...listOf(step.skipIf),
           ...listOf(step.requires),
+          ...String(step.blank || "").split(","),
           ...String(step.advanceOn || "").split(","),
         ].map((s) => s && s.trim())
       ).filter(Boolean)

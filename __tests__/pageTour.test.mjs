@@ -1226,8 +1226,15 @@ describe("walking one help answer", () => {
         if (e.target.closest(".clasp-suggestion-group")) placed.push("clasp");
       });
       let archClicks = 0;
-      document.querySelector(".jaw-combined-canvas").addEventListener("click", () => (archClicks += 1));
-      return { padlock, items, marks, placed, archClicks: () => archClicks };
+      let released = 0;
+      document.querySelector(".jaw-combined-canvas").addEventListener("click", (e) => {
+        archClicks += 1;
+        // The app lets go of the pick on a click in the white space.
+        if (e.target.closest(".tooth, .tooth-suggestions, button")) return;
+        released += 1;
+        marks.innerHTML = "";
+      });
+      return { padlock, items, marks, placed, archClicks: () => archClicks, released: () => released };
     }
 
     const clasps = () => walkthroughFor(TOPIC_BY_ID.get("clasps"));
@@ -1242,10 +1249,10 @@ describe("walking one help answer", () => {
       await settle();
     }
 
-    test("goes padlock, tab, clasp, then the arch — and ends by placing it", async () => {
+    test("goes padlock, tab, clasp, the arch, then the white space to finish", async () => {
       const page = build2D();
       await walk(clasps());
-      expect(stepTotal()).toBe(4);
+      expect(stepTotal()).toBe(5);
       expect(page.padlock.classList.contains("pt-target")).toBe(true);
 
       page.padlock.click();
@@ -1269,6 +1276,12 @@ describe("walking one help answer", () => {
       document.querySelector(".clasp-suggestion-group").click();
       await settle();
       expect(page.placed).toEqual(["clasp"]);
+      expect(stepNumber()).toBe(5);
+      expect(hint()).toBe("Click any white space to finish.");
+
+      document.querySelector(".jaw-combined-canvas").click();
+      await settle();
+      expect(page.released()).toBe(1);
       expect(tour.isTourRunning()).toBe(false);
     });
 
@@ -1295,7 +1308,7 @@ describe("walking one help answer", () => {
     test("the padlock is left out once the arches are locked — pressing it would unlock them", async () => {
       build2D({ locked: true });
       await walk(clasps());
-      expect(stepTotal()).toBe(3);
+      expect(stepTotal()).toBe(4);
       expect(document.querySelector(".component-tab").classList.contains("pt-target")).toBe(true);
     });
 
@@ -1343,7 +1356,7 @@ describe("walking one help answer", () => {
         "#jawLockToggleBtn, .jaw-combined-canvas, .tooth",
         "/src/pages/2DAnnotation.html"
       );
-      const [place] = walkthroughFor(TOPIC_BY_ID.get("bars")).slice(-1);
+      const [place] = walkthroughFor(TOPIC_BY_ID.get("bars")).slice(-2, -1);
       await walk([place]);
       await flush();
       expect($("ptNext").hidden).toBe(false);
@@ -1360,7 +1373,7 @@ describe("walking one help answer", () => {
       window.matchMedia = pointer(true);
       const page = build2D({ locked: true });
       await walk(clasps());
-      expect(stepTotal()).toBe(2);
+      expect(stepTotal()).toBe(3);
       expect(hint()).toBe("Tap the highlighted area to continue.");
 
       document.querySelector(".tooth").click(); // opens the quick-pick, above the walk
@@ -1371,6 +1384,103 @@ describe("walking one help answer", () => {
       showAll(".clasp-suggestion-group");
       await wait(300);
       expect(stepNumber()).toBe(2);
+    });
+
+    // On touch the quick-pick plates the tapped tooth itself, so the finish comes
+    // next — found under the quick-pick if the walk moved on while it was open.
+    test("waits for the tooth quick-pick to close before moving on", async () => {
+      window.matchMedia = pointer(true);
+      buildPage(
+        `<button id="jawLockToggleBtn" class="is-locked">Lock</button>
+         <div class="jaw-combined-canvas"><div class="tooth" data-tooth-id="16"></div></div>`,
+        "#jawLockToggleBtn, .jaw-combined-canvas, .tooth",
+        "/src/pages/2DAnnotation.html"
+      );
+      const tooth = document.querySelector(".tooth");
+      tooth.addEventListener("click", () => {
+        const sheet = document.createElement("div");
+        sheet.className = "tooth-quickpick-backdrop";
+        document.body.appendChild(makeVisible(sheet, { top: 0, left: 0, width: 1440, height: 900 }));
+      });
+      await walk(walkthroughFor(TOPIC_BY_ID.get("plates")));
+      expect(stepTotal()).toBe(2);
+
+      tooth.click();
+      await wait(300);
+      expect(stepNumber()).toBe(1);
+
+      document.querySelector(".tooth-quickpick-backdrop").remove();
+      await wait(300);
+      expect(stepNumber()).toBe(2);
+      expect(hint()).toBe("Tap any white space to finish.");
+    });
+
+    // The arch with a clasp picked: a tooth, its dot, and the Undo drawn over it.
+    function buildFinish() {
+      buildPage(
+        `<div class="jaw-combined-canvas">
+           <div class="tooth" data-tooth-id="16"></div>
+           <div class="tooth-suggestions"><div class="clasp-suggestion-group"></div></div>
+           <button id="undoWorkflowBtn">Undo</button>
+         </div>`,
+        ".clasp-suggestion-group, #undoWorkflowBtn",
+        "/src/pages/2DAnnotation.html"
+      );
+      const canvas = makeVisible(document.querySelector(".jaw-combined-canvas"), { top: 0, left: 0, width: 280, height: 280 });
+      const tooth = makeVisible(document.querySelector(".tooth"), { top: 0, left: 0, width: 100, height: 280 });
+      const reached = { tooth: 0, dot: 0, undo: 0, white: 0 };
+      tooth.addEventListener("click", () => (reached.tooth += 1));
+      document.querySelector(".clasp-suggestion-group").addEventListener("click", () => (reached.dot += 1));
+      $("undoWorkflowBtn").addEventListener("click", () => (reached.undo += 1));
+      canvas.addEventListener("click", (e) => {
+        if (e.target === canvas) reached.white += 1;
+      });
+      return { canvas, tooth, reached };
+    }
+    const finish = () => clasps().slice(-1);
+
+    test("finishing: only a click in the white space counts — teeth, dots and controls keep still", async () => {
+      const { canvas, tooth, reached } = buildFinish();
+      await walk(finish());
+      expect(hint()).toBe("Click any white space to finish.");
+
+      tooth.click();
+      document.querySelector(".clasp-suggestion-group").click();
+      $("undoWorkflowBtn").click();
+      await settle();
+      expect(reached).toEqual({ tooth: 0, dot: 0, undo: 0, white: 0 });
+      expect(tour.isTourRunning()).toBe(true);
+
+      canvas.click();
+      await settle();
+      expect(reached.white).toBe(1);
+      expect(tour.isTourRunning()).toBe(false);
+    });
+
+    // jsdom has no layout to hit-test, so the tooth is told to fill the left strip.
+    test("a spot marks the middle of the white space, and pings when a click lands on a tooth", async () => {
+      const { canvas, tooth } = buildFinish();
+      const had = document.elementFromPoint;
+      document.elementFromPoint = (x) => (x < 100 ? tooth : canvas);
+      try {
+        await walk(finish());
+        const spot = $("ptSpot");
+        expect(spot.hidden).toBe(false);
+        expect(parseFloat(spot.style.left)).toBeGreaterThan(100);
+        expect(parseFloat(spot.style.top)).toBeGreaterThan(80);
+        expect(parseFloat(spot.style.top)).toBeLessThan(200);
+        expect($("ptSpotLabel").textContent).toBe("Click here");
+
+        tooth.click();
+        await settle();
+        expect(spot.classList.contains("is-pinged")).toBe(true);
+
+        canvas.click();
+        await settle();
+        expect(spot.hidden).toBe(true);
+      } finally {
+        document.elementFromPoint = had;
+      }
     });
   });
 

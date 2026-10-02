@@ -393,6 +393,17 @@ export function renderJaw(jaw) {
         group.classList.add(`tooth-bar-suggestible--${jaw}`);
       }
     }
+    // An onlay rest shows no dots, so the teeth it can go on are marked for the
+    // help walkthrough to count clicks on. No style of its own.
+    if (
+      state.designMode &&
+      state.selectedComponentId === "rest-onlay" &&
+      tooth.isPresent &&
+      Number(toothId) % 10 >= 4 &&
+      !(tooth.componentPlacements || []).some((entry) => entry.componentId === "rest-onlay")
+    ) {
+      group.classList.add("tooth-onlay-suggestible");
+    }
     const toothTransform =
       `translate(${point.x.toFixed(2)} ${point.y.toFixed(2)}) rotate(${rotation.toFixed(2)})`;
     group.setAttribute("transform", toothTransform);
