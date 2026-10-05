@@ -1,6 +1,7 @@
 import * as THREE from "three";
+import { getAppBasePath } from "../js/shared/pageContext.js";
 
-const basePath = window.location.hostname.includes("github.io") ? "/.tmp-test-web" : "";
+const basePath = getAppBasePath();
 const wireframeOverlays = new Set();
 
 const style = document.createElement("style");

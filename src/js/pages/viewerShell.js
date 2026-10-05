@@ -2,11 +2,12 @@ import { lol } from "../shared/crypt.js";
 import { setupAppSidebar } from "../shared/appSidebar.js";
 import { API_BASE, MACHINE_ID, getLoggedInUser } from "../shared/api.js";
 import { returnToCaseList as goToCaseList } from "../shared/caseLinks.js";
+import { getAppBasePath } from "../shared/pageContext.js";
 
 const NOTES_STORAGE_KEY = "smartrpd_clinical_notes";
 
 function getBasePath() {
-  return window.location.hostname.includes("github.io") ? "/.tmp-test-web" : "";
+  return getAppBasePath();
 }
 
 function getEncryptedCaseId() {
@@ -235,8 +236,7 @@ function openReturnGate({ onLogin }) {
 function wireSidebarReturn() {
   const btn = document.getElementById("sidebarReturnBtn");
   if (!btn) return;
-  const isGitHubPages = window.location.hostname.includes("github.io");
-  const basePath = isGitHubPages ? "/.tmp-test-web" : "";
+  const basePath = getAppBasePath();
   const caseListUrl = `${basePath}/src/pages/case_list.html`;
 
   const returnToCaseList = () => goToCaseList(caseListUrl);

@@ -16,7 +16,7 @@ permissions:
 
 env:
   PAGES_BRANCH: nyunt/dev-W7.1
-  SITE_URL: https://faid123.github.io/.tmp-test-web/
+  SITE_URL: https://ndcs-smartrpd.github.io/tmp.rpd/
   DOCS_BRANCH: dev-deploy-documentation
 
 jobs:

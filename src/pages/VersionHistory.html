@@ -48,9 +48,7 @@
     </div>
 
     <script>
-      const hostname = window.location.hostname;
-      const isGitHubPages = hostname.includes("github.io");
-      const basePath = isGitHubPages ? "/.tmp-test-web" : "";
+      const basePath = new URL("../../", window.location.href).pathname.replace(/\/$/, "");
 
       document.write(`
         <link rel="stylesheet" href="${basePath}/css/versionHistory.css" />

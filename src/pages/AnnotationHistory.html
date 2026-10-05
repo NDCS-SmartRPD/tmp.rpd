@@ -140,9 +140,7 @@
     </aside>
 
     <script>
-      const hostname = window.location.hostname;
-      const isGitHubPages = hostname.includes("github.io");
-      const basePath = isGitHubPages ? "/.tmp-test-web" : "";
+      const basePath = new URL("../../", window.location.href).pathname.replace(/\/$/, "");
       document.write(`<script type="module" src="${basePath}/src/js/pages/AnnotationHistory.js"></` + `script>`);
     </script>
   </body>

@@ -27,6 +27,10 @@ export function appRoot() {
   return "./";
 }
 
+export function getAppBasePath() {
+  return new URL(appRoot(), window.location.href).pathname.replace(/\/$/, "");
+}
+
 // Link a css/ stylesheet on first use, so a page that never opens the panel
 // never fetches its styles. Returns the <link>, for callers that must wait for it.
 export function ensureStylesheet(cssFile) {

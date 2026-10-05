@@ -2,10 +2,11 @@
 // shared by the case list's copy/QR actions and the 2D Case Note's emails.
 
 import { lol } from "./crypt.js";
+import { getAppBasePath } from "./pageContext.js";
 
 // Substituted for localhost on shared links only: a phone scanning a QR code
 // can't reach a dev machine's localhost.
-const LIVE_VIEWER_BASE = "https://faid123.github.io/.tmp-test-web";
+const LIVE_VIEWER_BASE = "https://ndcs-smartrpd.github.io/tmp.rpd";
 
 // Encrypts the id and respects the GitHub-Pages base path. `forShare` rewrites
 // localhost to the live server; deployed builds always use their own origin.
@@ -17,10 +18,7 @@ export function buildThreeDViewerUrl(caseId, { forShare = false } = {}) {
   if (forShare && isLocalhost) {
     return `${LIVE_VIEWER_BASE}/src/pages/ThreeDViewer.html?id=${encryptedId}`;
   }
-  const isGitHubPages = host.includes("github.io");
-  const basePath = isGitHubPages
-    ? `/${window.location.pathname.split("/").filter(Boolean)[0] || ""}`
-    : "";
+  const basePath = getAppBasePath();
   return `${window.location.origin}${basePath}/src/pages/ThreeDViewer.html?id=${encryptedId}`;
 }
 

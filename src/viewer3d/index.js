@@ -1,5 +1,6 @@
 // Import the THREE.js library
 import * as THREE from "three";
+import { getAppBasePath } from "../js/shared/pageContext.js";
 // To allow for the camera to move around the scene
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
@@ -2694,7 +2695,7 @@ function setPolylineMenuVisibility(filterSummaryItem, isVisible) {
 function createPolylineVisibilityToggle(container, domElement) {
   if (document.getElementById("polyline-visibility-panel")) return;
 
-  const _polylineBp = window.location.hostname.includes("github.io") ? "/.tmp-test-web" : "";
+  const _polylineBp = getAppBasePath();
 
   const panel = document.createElement("div");
   panel.id = "polyline-visibility-panel";
@@ -3305,7 +3306,7 @@ function removeViewerLoadingScreen() {
   if (!viewerContainer) {
     return;
   }
-  const basePath = window.location.hostname.includes("github.io") ? "/.tmp-test-web" : "";
+  const basePath = getAppBasePath();
   createViewerLoadingScreen();
   const viewerTotalStartedAt = performance.now();
   const pageInitializationStartedAt = performance.now();
@@ -3475,9 +3476,7 @@ function removeViewerLoadingScreen() {
                 return;
               }
 
-              const isGitHubPages =
-                window.location.hostname.includes("github.io");
-              const basePath = isGitHubPages ? "/.tmp-test-web" : "";
+              const basePath = getAppBasePath();
 
               // Logged in: compose the annotation background, then open the 2D
               // noticeboard. `then` lets the login flow reuse the same compose.

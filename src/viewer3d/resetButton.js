@@ -1,3 +1,5 @@
+import { getAppBasePath } from "../js/shared/pageContext.js";
+
 export function addResetButton(camera, clone, controls, getResetTarget = null) {
     let rotationLocked = true; // Initial state of rotation lock
     const getViewerRightNav = () => {
@@ -107,7 +109,7 @@ export function addResetButton(camera, clone, controls, getResetTarget = null) {
 
     // Create the icon
     const resetIcon = document.createElement('img');
-    const basePath = window.location.hostname.includes("github.io") ? "/.tmp-test-web" : "";
+    const basePath = getAppBasePath();
     resetIcon.src = `${basePath}/assets/reset.png`; // Replace with the path to your icon
     // resetIcon.src = '/reset.png'; // Replace with the path to your icon
     resetIcon.alt = 'Reset';
@@ -184,7 +186,7 @@ export function addResetButton(camera, clone, controls, getResetTarget = null) {
 
     // Function to update lock rotation button image based on current state
     function updateLockRotationButtonImage() {
-        const basePath = window.location.hostname.includes("github.io") ? "/.tmp-test-web" : "";
+        const basePath = getAppBasePath();
 
         const lockedImageUrl = `${basePath}/assets/lock.png`;    // Replace with your locked image path
         const unlockedImageUrl = `${basePath}/assets/unlock.png`;

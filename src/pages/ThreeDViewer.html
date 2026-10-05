@@ -190,15 +190,8 @@
   </div>
 
     <script>
-      const hostname = window.location.hostname;
-      const isGitHubPages = hostname.includes("github.io");
-      const isAWS = /^[0-9.]+$/.test(hostname);
-      const basePath = isGitHubPages ? "/.tmp-test-web" : "";
-      const bundlePath = isGitHubPages
-        ? `${basePath}/dist/bundle.js`
-        : isAWS
-          ? "/dist/bundle.js"
-          : "/dist/bundle.js";
+      const basePath = new URL("../../", window.location.href).pathname.replace(/\/$/, "");
+      const bundlePath = `${basePath}/dist/bundle.js`;
 
       document.write(`
         <link rel="stylesheet" href="${basePath}/css/style.css" />

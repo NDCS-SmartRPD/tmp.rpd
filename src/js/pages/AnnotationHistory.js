@@ -1,4 +1,5 @@
 import { lol } from "../shared/crypt.js";
+import { getAppBasePath } from "../shared/pageContext.js";
 import { logApi } from "../shared/apiLog.js";
 import { setupAppSidebar } from "../shared/appSidebar.js";
 import { VIEWER_UUID } from "../shared/config.js";
@@ -20,8 +21,7 @@ function initSidebar() {
   setupAppSidebar({ triggerId: "footerMenuBtn", indexHref: "../../index.html" });
 
   document.getElementById("sidebarReturnBtn")?.addEventListener("click", () => {
-    const isGitHubPages = window.location.hostname.includes("github.io");
-    const basePath = isGitHubPages ? "/.tmp-test-web" : "";
+    const basePath = getAppBasePath();
     window.location.href = `${basePath}/src/pages/case_list.html`;
   });
 }

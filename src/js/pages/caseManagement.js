@@ -1,4 +1,5 @@
 import { lol } from "../shared/crypt.js";
+import { getAppBasePath } from "../shared/pageContext.js";
 import { buildThreeDViewerUrl } from "../shared/caseLinks.js";
 import { toast, confirmModal, openThemedCalendar, attachThemedCalendar } from "../shared/toast.js";
 import { openSelectMenu, closeSelectMenu, isSelectMenuOpenFor } from "../shared/selectMenu.js";
@@ -2891,11 +2892,8 @@ if (filterSel) filterSel.addEventListener("change", () => applyClientFilters());
       }
 
       const encryptedId = lol(caseId);
-      const isGitHubPages = window.location.hostname.includes("github.io");
       const queryConnector = "?";
-      const basePath = isGitHubPages
-        ? `/${window.location.pathname.split("/").filter(Boolean)[0] || ""}`
-        : "";
+      const basePath = getAppBasePath();
 
       const targetURL = `${window.location.origin}${basePath}/src/pages/2DAnnotation.html${queryConnector}id=${encryptedId}`;
       window.open(targetURL, "_blank");

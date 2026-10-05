@@ -11,9 +11,9 @@ pipeline {
         // launchd-started Jenkins gets a minimal PATH; include the usual macOS install locations for node/npm.
         PATH         = "/usr/local/bin:/opt/homebrew/bin:${PATH}"
         APP_NAME     = 'smartrpd'
-        GH_REPO      = 'faid123/.tmp-test-web'                      // owner/repo
+        GH_REPO      = 'NDCS-SmartRPD/tmp.rpd'                      // owner/repo
         PAGES_BRANCH = 'nyunt/dev-W7.1'                              // GitHub Pages publishing source (the test site)
-        SITE_URL     = 'https://faid123.github.io/.tmp-test-web/'
+        SITE_URL     = 'https://ndcs-smartrpd.github.io/tmp.rpd/'
         PAGES_DIR    = "${WORKSPACE}/.gh-pages"
         GH_CREDENTIALS = 'github-pages-token'                        // Jenkins username/PAT credential id
     }
