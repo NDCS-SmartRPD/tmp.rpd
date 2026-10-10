@@ -15,6 +15,7 @@ import {
   getRetainerClaspSuggestionRadius,
   getCingulumAcSuggestionPointsForTooth,
   getComponentAssetReference,
+  getFlangeFreeEnds,
   BAR_PLACEMENT_ANCHOR_SURFACE,
   getBarPlacementAssetReference,
   getBarPlacementImageSize,
@@ -202,7 +203,12 @@ function appendToothComponentVisuals(group, tooth, toothId, jaw) {
       if (!isMeshComponent(def)) {
         continue;
       }
-      const visual = createComponentVisual(id, toothId, jaw);
+      // A flange rounds its buccal corner on each end where the flange run stops.
+      const options =
+        id === "mesh-flange"
+          ? { flangeFreeEnds: getFlangeFreeEnds(state.teeth, toothId, jaw) }
+          : undefined;
+      const visual = createComponentVisual(id, toothId, jaw, options);
       if (visual) {
         group.appendChild(visual);
       }
@@ -1462,7 +1468,7 @@ function buildDistalCapClipPath(clipId, halfW, halfH) {
 
 // Compose one component image overlay aligned with a given tooth transform.
 function createComponentVisual(componentId, toothId, jaw, options) {
-  const assetHref = getComponentAssetReference(componentId, toothId);
+  const assetHref = getComponentAssetReference(componentId, toothId, options?.flangeFreeEnds);
   if (!assetHref) {
     return null;
   }

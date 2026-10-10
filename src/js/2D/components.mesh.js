@@ -1,5 +1,5 @@
 import { getPlateAssetReference } from "./components.plate.js";
-import { isAutoMeshPlacementExcludedToothId, TOOTH_ORDER } from "./constants.js";
+import { getNeighborToothIds, isAutoMeshPlacementExcludedToothId, TOOTH_ORDER } from "./constants.js";
 
 export const COMPONENT_ASSET_BASE = "../../assets/RPD_Component";
 
@@ -53,10 +53,50 @@ export function getComponentTemplateToothId(toothId) {
   return `${quadrant}${unit}`;
 }
 
-// Resolve mesh SVG asset path for a tooth.
-export function getComponentAssetReference(componentId, toothId) {
+/** Flange art with the buccal corner rounded on the end(s) where the flange run stops. */
+const FLANGE_IMAGE_SUFFIX_BY_FREE_ENDS = Object.freeze({
+  mesial: "flange_mesial.svg",
+  distal: "flange_distal.svg",
+  both: "flange_mesial_distal.svg",
+});
+
+function getFlangeImageSuffix(freeEnds) {
+  if (freeEnds?.mesial && freeEnds?.distal) return FLANGE_IMAGE_SUFFIX_BY_FREE_ENDS.both;
+  if (freeEnds?.mesial) return FLANGE_IMAGE_SUFFIX_BY_FREE_ENDS.mesial;
+  if (freeEnds?.distal) return FLANGE_IMAGE_SUFFIX_BY_FREE_ENDS.distal;
+  return COMPONENT_IMAGE_SUFFIX_BY_ID["mesh-flange"];
+}
+
+/** Whether the arch draws a mesh on this tooth record (meshes render on missing teeth only). */
+function toothDrawsMesh(tooth) {
+  return Boolean(
+    tooth &&
+      !tooth.isPresent &&
+      Array.isArray(tooth.components) &&
+      tooth.components.some((id) => isMeshComponent(id))
+  );
+}
+
+/**
+ * Ends of a flange run that this tooth closes: a side is free when the neighbour across
+ * that embrasure draws no mesh, or there is no neighbour (the arch end).
+ * @returns {{ mesial: boolean, distal: boolean }}
+ */
+export function getFlangeFreeEnds(teeth, toothId, jaw) {
+  const neighborIds = getNeighborToothIds(toothId, jaw);
+  return {
+    mesial: !toothDrawsMesh(neighborIds.mesial ? teeth?.[neighborIds.mesial] : null),
+    distal: !toothDrawsMesh(neighborIds.distal ? teeth?.[neighborIds.distal] : null),
+  };
+}
+
+// Resolve mesh SVG asset path for a tooth; a flange picks its art from `flangeFreeEnds`.
+export function getComponentAssetReference(componentId, toothId, flangeFreeEnds = null) {
   const templateToothId = getComponentTemplateToothId(toothId);
-  const suffix = COMPONENT_IMAGE_SUFFIX_BY_ID[componentId];
+  const suffix =
+    componentId === "mesh-flange"
+      ? getFlangeImageSuffix(flangeFreeEnds)
+      : COMPONENT_IMAGE_SUFFIX_BY_ID[componentId];
   const fileName = suffix ? `${templateToothId}-${suffix}` : null;
   if (fileName) {
     return `${COMPONENT_ASSET_BASE}/${templateToothId}/mesh/${fileName}`;

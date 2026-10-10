@@ -437,6 +437,7 @@ export {
   ensureMeshPlacementsOnMissingTeeth,
   getComponentAssetReference,
   getDefaultMeshIdForDesignMode,
+  getFlangeFreeEnds,
   getMeshPlacementImageSize,
   getMeshPlacementOffset,
   getMeshPlacementRenderScale,
