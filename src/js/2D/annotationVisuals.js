@@ -33,6 +33,7 @@ import {
   getMeshPlacementImageSize,
   getMeshPlacementOffset,
   getMeshPlacementRenderScale,
+  getPlateDistalTrim,
   getPlatePlacementImageSize,
   getPlatePlacementOffset,
   getPlatePlacementRenderScale,
@@ -62,6 +63,7 @@ import {
   isPalatalBarMajorComponent,
   isPalatalHoleMajorComponent,
   isPlateComponentId,
+  isPlateUncutAtRunEnd,
   isRestComponent,
   meshHoleUniformScaleToothId,
   PALATAL_BAR_ARCH_OVERLAY,
@@ -181,10 +183,12 @@ function appendToothComponentVisuals(group, tooth, toothId, jaw) {
       !tooth.components.some((id) => isReciprocatingClaspComponent(id))
     ) {
       // A palatal bar's last plate terminates the run but the art stops on a straight cut,
-      // so round it to match the connector's own _distal cap beside it.
+      // so round it to match the connector's own _distal cap beside it (upper 7s stay whole).
       const plate = createComponentVisual("plate-prox", toothId, jaw, {
         roundDistalEnd:
-          isPalatalBarMajorComponent(majorId) && isPalatalBarDistalRunEnd(toothId, state.teeth),
+          isPalatalBarMajorComponent(majorId) &&
+          isPalatalBarDistalRunEnd(toothId, state.teeth) &&
+          !isPlateUncutAtRunEnd(toothId),
       });
       if (plate) group.appendChild(plate);
     }
@@ -1466,6 +1470,22 @@ function buildDistalCapClipPath(clipId, halfW, halfH) {
   return clip;
 }
 
+// Straight distal cut for a last-molar plate: the image box, cut by the trim line, on the
+// side that holds the image centre.
+function buildDistalTrimClipPath(clipId, halfW, halfH, trim) {
+  const yLeft = trim.left * halfH;
+  const yRight = trim.right * halfH;
+  const keepTop = (yLeft + yRight) / 2 > 0;
+  const points = keepTop
+    ? [[-halfW, -halfH], [halfW, -halfH], [halfW, yRight], [-halfW, yLeft]]
+    : [[-halfW, yLeft], [halfW, yRight], [halfW, halfH], [-halfW, halfH]];
+  const clip = svgEl("clipPath", { id: clipId, clipPathUnits: "userSpaceOnUse" });
+  clip.appendChild(
+    svgEl("polygon", { points: points.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ") })
+  );
+  return clip;
+}
+
 // Compose one component image overlay aligned with a given tooth transform.
 function createComponentVisual(componentId, toothId, jaw, options) {
   const assetHref = getComponentAssetReference(componentId, toothId, options?.flangeFreeEnds);
@@ -1534,7 +1554,14 @@ function createComponentVisual(componentId, toothId, jaw, options) {
     class: imageClass,
   });
 
-  if (options?.roundDistalEnd) {
+  // A plate ending its run on a molar gets a straight distal cut, which also replaces the
+  // palatal bar's rounded cap there.
+  const distalTrim = isPlate ? getPlateDistalTrim(componentId, toothId, jaw, state.teeth) : null;
+  if (distalTrim) {
+    const clipId = `distal-trim-${jaw}-${toothId}-${componentId}`;
+    visual.appendChild(buildDistalTrimClipPath(clipId, halfW, halfH, distalTrim));
+    image.setAttribute("clip-path", `url(#${clipId})`);
+  } else if (options?.roundDistalEnd) {
     const clipId = `distal-cap-${jaw}-${toothId}-${componentId}`;
     visual.appendChild(buildDistalCapClipPath(clipId, halfW, halfH));
     image.setAttribute("clip-path", `url(#${clipId})`);

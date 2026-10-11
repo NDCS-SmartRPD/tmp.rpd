@@ -490,14 +490,14 @@ export function handleDesignComponentSelect(componentId) {
   }
   if (componentId === "assembly-rpi") {
     setMessage(
-      "RPI selected (mesial rest + proximal plate + distal I-bar). Click the mesial rest-seat suggestion on a posterior tooth whose distal neighbour is missing.",
+      "RPI selected (mesial rest + lingual plate + distal I-bar). Click the mesial rest-seat suggestion on a posterior tooth whose distal neighbour is missing.",
       false
     );
     return;
   }
   if (componentId === "assembly-rpa") {
     setMessage(
-      "RPA selected (mesial rest + proximal plate + mesial buccal clasp). Click the mesial rest-seat suggestion on a posterior tooth whose distal neighbour is missing.",
+      "RPA selected (mesial rest + lingual plate + mesial buccal clasp). Click the mesial rest-seat suggestion on a posterior tooth whose distal neighbour is missing.",
       false
     );
     return;

@@ -296,8 +296,8 @@ export const COMPONENT_CATALOG = [
   },
   {
     id: "plate-prox",
-    label: "Proximal Plate",
-    shortLabel: "PP",
+    label: "Lingual Plate",
+    shortLabel: "LP",
     icon: "../../assets/menu-icon/Plates/Recip_Plate.png",
     tab: "plate",
     requiresPresence: true,
@@ -464,10 +464,12 @@ export {
   ensurePlatePlacementsOnPresentTeeth,
   ensurePlatePlacementsOnPresentTeethInJaws,
   getDefaultPlateIdForDesignMode,
+  getPlateDistalTrim,
   getPlatePlacementImageSize,
   getPlatePlacementOffset,
   getPlatePlacementRenderScale,
   isPlateComponentId,
+  isPlateUncutAtRunEnd,
   syncReciprocatingPlatesToMajorConnector,
 } from "./components.plate.js";
 

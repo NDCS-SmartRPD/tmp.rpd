@@ -1,5 +1,5 @@
-import { isAutoMeshPlacementExcludedToothId, TOOTH_ORDER } from "./constants.js";
-import { COMPONENT_ASSET_BASE, getComponentTemplateToothId } from "./components.mesh.js";
+import { getNeighborToothIds, isAutoMeshPlacementExcludedToothId, TOOTH_ORDER } from "./constants.js";
+import { COMPONENT_ASSET_BASE, getComponentTemplateToothId, isMeshComponent } from "./components.mesh.js";
 import { isReciprocatingClaspComponent } from "./components.clasp.js";
 import {
   isMajorConnectorToothExcluded,
@@ -56,105 +56,65 @@ const PLATE_RENDER_SCALE_BY_JAW = Object.freeze({
   lower: 1,
 });
 
-/** Mesh Plate (`plate-crossmesh`) scale overrides. Exact tooth id first, else template. */
-const PLATE_CROSSMESH_SCALE_OVERRIDE_BY_TOOTH = Object.freeze({
-  "11": 1.05,
-  "12": 1.05,
-  "13": 1.05,
-  "14": .92,
-  "15": .95,
-  "16": .95,
-  "17": .93,
-  "18": .87,
-
-  "41": .65,
-  "42": .64,
-  "43": .80,
-  "44": .75,
-  "45": .75,
-  "46": .65,
-  "47": .65,
-  "48": .65
-});
-
 /**
- * Tooth-local translation before scale (mesh-offset units). Keys: template teeth
- * 11-18 / 41-48, or exact FDI to override. Quadrants 2/3 mirror X for template-only rows.
+ * Per-tooth plate scale and offset (tooth-local units, before scale), keyed by exact FDI.
+ * Fitted on the rendered arch so neighbouring plates meet edge to edge and tuck just under
+ * the major connector's outline. Both plate types share the art frame, so both use these.
  */
-const PLATE_POSITION_OFFSET_SEED_BY_TOOTH = Object.freeze({
-  "11": { x: -5, y: 10 },
-  "21": { x: 4, y: 10 },
-  "12": { x: 6.5, y: 11.5 },
-  "22": { x: -6.5, y: 11.5 },
-  "13": { x: 8.3, y: 7 },
-  "23": { x: -10.3, y: 7 },
-  "14": { x: 7, y: 8.2 },
-  "24": { x: -7, y: 8.2 },
-  "15": { x: 4.5, y: 5.8 },  
-  "25": { x: -5.5, y: 5.8 },
-  "16": { x: 4, y: 8 },
-  "26": { x: -4, y: 8 },
-  "17": { x: 6, y: 8 },
-  "27": { x: -6, y: 8 },
-  "18": { x: 10, y: -3 },
-  "28": { x: -11, y: -3 },
-  "41": { x: 3.4, y: -26 },
-  "42": { x: 7.4, y: -22 },
-  "43": { x: 15.2, y: -20 },
-  "44": { x: 28.5, y: -12.5 },
-  "45": { x: 28, y: -4 },
-  "46": { x: 25, y: -9.5 },
-  "47": { x: 25.5, y: -10 },
-  "48": { x: 34.5, y: 2.2 },
+const PLATE_SCALE_BY_TOOTH = Object.freeze({
+  "11": 1.020, "12": 0.964, "13": 0.884, "14": 0.829, "15": 0.884, "16": 0.908, "17": 0.900, "18": 0.842,
+  "21": 1.020, "22": 0.966, "23": 0.891, "24": 0.820, "25": 0.884, "26": 0.906, "27": 0.891, "28": 0.842,
+  "31": 0.698, "32": 0.690, "33": 0.853, "34": 0.770, "35": 0.731, "36": 0.629, "37": 0.645, "38": 0.702,
+  "41": 0.693, "42": 0.687, "43": 0.851, "44": 0.764, "45": 0.747, "46": 0.625, "47": 0.643, "48": 0.678,
 });
 
-/** Mesh Plate (`plate-crossmesh`) additive x/y offset overrides on top of the base
- *  seed. Exact tooth id first, else template. */
-const PLATE_CROSSMESH_OFFSET_OVERRIDE_BY_TOOTH = Object.freeze({
-"11": { x: 0, y: 0 },
-"12": { x: -6, y: -7 },"22": { x: 6, y: -7 },
-"13": { x: -8, y: -10 },"23": { x: 8, y: -10 },
-"14": { x: -2, y: -7 },"24": { x: 2, y: -7 },
-"15": { x: -1, y: -7 },"25": { x: 1, y: -7 },
-"16": { x: -2, y: -7 },"26": { x: 2, y: -7 },
-"17": { x: -1.5, y: -10 },"27": { x: 1.5, y: -10 },
-"18": { x: -3, y: 1 },"28": { x: 3, y: 1 },
+const PLATE_POSITION_OFFSET_BY_TOOTH = Object.freeze({
+  "11": { x: -4.7, y: 8.4 },
+  "12": { x: -0.6, y: 6.4 },
+  "13": { x: 2.4, y: 1.5 },
+  "14": { x: 4.6, y: 0.6 },
+  "15": { x: 0.8, y: -1.3 },
+  "16": { x: -1.6, y: 0.8 },
+  "17": { x: 0.1, y: -0.1 },
+  "18": { x: 1.9, y: 2.1 },
 
-"41": { x: -4, y: 2 },
-"42": { x: -2, y: 1.5 },
-"43": { x: -4, y: 2.5 },
-"44": { x: -7, y: 2 },
-"45": { x: -8, y: -1 },
-"46": { x: -1, y: 4 },
-"47": { x: -2.5, y: 5 },
-"48": { x: -2, y: -4 },
-"31": { x: 4, y: 2 },
-"32": { x: 2, y: 1.5 },
-"33": { x: 4, y: 2.5 },
-"34": { x: 7, y: 2 },
-"35": { x: 8, y: -1 },
-"36": { x: 0, y: 4 },
-"37": { x: 2.5, y: 5 },
-"38": { x: 2, y: -4 },
+  "21": { x: 4.6, y: 8.2 },
+  "22": { x: 1.5, y: 6.1 },
+  "23": { x: -3.9, y: 1.6 },
+  "24": { x: -4.8, y: 1.4 },
+  "25": { x: -1.8, y: -1.1 },
+  "26": { x: 2.5, y: 1.0 },
+  "27": { x: 0.2, y: 0.0 },
+  "28": { x: -2.0, y: 1.8 },
+
+  "31": { x: 0.5, y: -22.3 },
+  "32": { x: -5.7, y: -18.9 },
+  "33": { x: -11.0, y: -15.9 },
+  "34": { x: -22.2, y: -9.2 },
+  "35": { x: -18.7, y: -6.5 },
+  "36": { x: -23.5, y: -7.2 },
+  "37": { x: -20.8, y: -8.6 },
+  "38": { x: -28.3, y: -6.9 },
+
+  "41": { x: -0.2, y: -22.4 },
+  "42": { x: 6.1, y: -18.9 },
+  "43": { x: 11.4, y: -16.0 },
+  "44": { x: 22.8, y: -9.1 },
+  "45": { x: 18.9, y: -6.5 },
+  "46": { x: 23.4, y: -7.8 },
+  "47": { x: 21.8, y: -8.6 },
+  "48": { x: 30.0, y: -6.2 },
 });
 
 // Get render scale for plate placement.
-export function getPlatePlacementRenderScale(componentId, _toothId, jaw) {
+export function getPlatePlacementRenderScale(componentId, toothId, jaw) {
   if (!isPlateComponentId(componentId)) {
     return 1;
   }
   const componentScale = PLATE_RENDER_SCALE_BY_COMPONENT[componentId] || 1;
   const jawScale = PLATE_RENDER_SCALE_BY_JAW[jaw] || 1;
-  if (componentId === "plate-crossmesh") {
-    const exactToothId = String(_toothId ?? "");
-    const templateToothId = getComponentTemplateToothId(_toothId);
-    const toothScale =
-      PLATE_CROSSMESH_SCALE_OVERRIDE_BY_TOOTH[exactToothId] ??
-      PLATE_CROSSMESH_SCALE_OVERRIDE_BY_TOOTH[templateToothId] ??
-      1;
-    return componentScale * jawScale * (Number.isFinite(toothScale) ? toothScale : 1);
-  }
-  return componentScale * jawScale;
+  const toothScale = PLATE_SCALE_BY_TOOTH[String(toothId ?? "")] ?? 1;
+  return componentScale * jawScale * (Number.isFinite(toothScale) ? toothScale : 1);
 }
 
 // Get per-tooth offset for plate placement.
@@ -162,29 +122,55 @@ export function getPlatePlacementOffset(componentId, toothId) {
   if (!isPlateComponentId(componentId)) {
     return { x: 0, y: 0 };
   }
-  const templateToothId = getComponentTemplateToothId(toothId);
-  const exact = PLATE_POSITION_OFFSET_SEED_BY_TOOTH[toothId];
-  const tmpl = PLATE_POSITION_OFFSET_SEED_BY_TOOTH[templateToothId];
-  const row = exact ?? tmpl ?? { x: 0, y: 0 };
-  const numeric = Number(toothId);
-  const quadrant = Number.isFinite(numeric) ? Math.floor(numeric / 10) : 0;
-  const mirrorX = !exact && (quadrant === 2 || quadrant === 3);
-  const x = mirrorX ? -row.x : row.x;
-  if (componentId === "plate-crossmesh") {
-    const exactToothId = String(toothId ?? "");
-    const ov =
-      PLATE_CROSSMESH_OFFSET_OVERRIDE_BY_TOOTH[exactToothId] ??
-      PLATE_CROSSMESH_OFFSET_OVERRIDE_BY_TOOTH[templateToothId] ??
-      null;
-    return {
-      x: (Number.isFinite(x) ? x : 0) + (Number.isFinite(ov?.x) ? ov.x : 0),
-      y: (Number.isFinite(row.y) ? row.y : 0) + (Number.isFinite(ov?.y) ? ov.y : 0),
-    };
-  }
+  const row = PLATE_POSITION_OFFSET_BY_TOOTH[String(toothId ?? "")] ?? { x: 0, y: 0 };
   return {
-    x: Number.isFinite(x) ? x : 0,
+    x: Number.isFinite(row.x) ? row.x : 0,
     y: Number.isFinite(row.y) ? row.y : 0,
   };
+}
+
+/**
+ * The last plate of a run is cut straight instead of wrapping its molar; the connector's own
+ * cap ends the run. An 8 ends in line with the tooth's distal surface. A lower 7 (when the 8
+ * carries nothing) ends square to the connector where its straight edge meets the rounded
+ * _distal cap. Each row is the cut line, as y fractions of the image half-height at its left
+ * and right edges; the side holding the image centre stays.
+ */
+const PLATE_DISTAL_TRIM_BY_TOOTH = Object.freeze({
+  "18": { left: 0.406, right: 0.585 },
+  "28": { left: 0.411, right: 0.589 },
+  "37": { left: -0.485, right: -0.674 },
+  "38": { left: -0.432, right: -0.422 },
+  "47": { left: -0.485, right: -0.674 },
+  "48": { left: -0.463, right: -0.456 },
+});
+
+/** Whether a plate on `toothId` ends its run: no plate or mesh is drawn on the distal neighbour. */
+function plateEndsRunDistally(toothId, jaw, teeth) {
+  const distalId = getNeighborToothIds(toothId, jaw).distal;
+  const distal = distalId ? teeth?.[distalId] : null;
+  if (!distal || !Array.isArray(distal.components)) {
+    return true;
+  }
+  return !distal.components.some((id) =>
+    distal.isPresent ? isPlateComponentId(id) : isMeshComponent(id)
+  );
+}
+
+// Upper 7s keep their whole plate even when it ends the run: no straight or rounded cut.
+const PLATE_UNCUT_RUN_END_TEETH = Object.freeze(new Set(["17", "27"]));
+
+export function isPlateUncutAtRunEnd(toothId) {
+  return PLATE_UNCUT_RUN_END_TEETH.has(String(toothId ?? ""));
+}
+
+// Get the distal cut line for a plate that ends its run on a molar, or null.
+export function getPlateDistalTrim(componentId, toothId, jaw, teeth) {
+  if (!isPlateComponentId(componentId)) {
+    return null;
+  }
+  const trim = PLATE_DISTAL_TRIM_BY_TOOTH[String(toothId ?? "")];
+  return trim && plateEndsRunDistally(String(toothId), jaw, teeth) ? trim : null;
 }
 
 // Get plate image size for a tooth.

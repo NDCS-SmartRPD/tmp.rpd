@@ -823,7 +823,7 @@ function placeRpxAssemblyOnTooth(toothId, jaw, restSurface, config) {
   addPlacement(tooth, "plate-prox", null);
 
   syncToothComponentsFromPlacements(tooth);
-  setMessage(`Placed ${config.label} on tooth ${id} (mesial rest, proximal plate, ${config.retentiveLabel}).`, false);
+  setMessage(`Placed ${config.label} on tooth ${id} (mesial rest, lingual plate, ${config.retentiveLabel}).`, false);
   return true;
 }
 
