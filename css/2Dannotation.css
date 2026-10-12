@@ -3341,6 +3341,33 @@ button.upload3d-row {
   cursor: pointer;
 }
 
+/* Ball clasp: steel art (#metal-ball-clasp); clicks go to the transparent line over it. */
+.ball-clasp-art {
+  pointer-events: none;
+  -webkit-filter: url(#metal-ball-clasp);
+  filter: url(#metal-ball-clasp);
+}
+
+.ball-clasp-art.is-ghost {
+  opacity: 0.3;
+}
+
+/* Same small lift as a rest ghost, so it never reads as already placed. */
+@media (hover: hover) {
+  .ball-clasp-suggestion:hover .ball-clasp-art.is-ghost {
+    opacity: 0.5;
+  }
+}
+
+.ball-clasp-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 12;
+  stroke-linecap: round;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
 /* Desktop only: place action buttons under the tools (Components) panel
    so the middle column belongs entirely to the jaws. */
 @media (min-width: 1201px) {

@@ -1,6 +1,8 @@
 import { getComponentTemplateToothId, isMeshComponent } from "./components.mesh.js";
 import { isBarComponent } from "./components.bar.js";
 import {
+  getBallClaspPartnerToothId,
+  isBallClaspComponent,
   isReciprocatingClaspComponent,
   isRetainerClaspComponent,
   isRingClaspComponent,
@@ -246,16 +248,45 @@ function getMeshMinorConnectorSides(tooth, neighbors) {
 }
 
 /**
+ * Sides a ball clasp's wire ends on. It crosses its contact, so BOTH teeth there count and
+ * the embrasure gets one shared connector: the owner's own clasp side, plus the side facing
+ * a neighbour whose clasp sits against this tooth. Needs `neighbors` for the latter.
+ */
+function getBallClaspConnectorSides(tooth, neighbors) {
+  const sides = { mesial: false, distal: false };
+  for (const placement of tooth.componentPlacements) {
+    if (!isBallClaspComponent(placement?.componentId)) continue;
+    const surface = normalizeSurface(placement.surface);
+    if (surface === "mesial" || surface === "distal") sides[surface] = true;
+  }
+  if (!neighbors || tooth.tooth_id == null) return sides;
+  for (const side of ["mesial", "distal"]) {
+    const neighbor = neighbors[side];
+    if (!Array.isArray(neighbor?.componentPlacements)) continue;
+    const clasped = neighbor.componentPlacements.some(
+      (placement) =>
+        isBallClaspComponent(placement?.componentId) &&
+        getBallClaspPartnerToothId(neighbor.tooth_id, normalizeSurface(placement.surface)) ===
+          String(tooth.tooth_id)
+    );
+    if (clasped) sides[side] = true;
+  }
+  return sides;
+}
+
+/**
  * Which embrasure sides a tooth's minor connector attaches on (desktop GetConnectorData):
  * a rest/bar sits on its own surface, a retentive clasp anchors at its ORIGIN opposite the
- * tip, and a reciprocating clasp is ignored — it is not a retainer.
+ * tip, a ball clasp at its contact on both teeth, and a reciprocating clasp is ignored — it
+ * is not a retainer.
  *
- * `neighbors` enables the mesh and lingual-rest rules; omit it for pure single-tooth
- * derivation. A wrapped arm REPLACES this derivation with the clasp's own side.
+ * `neighbors` enables the mesh, lingual-rest and ball-clasp partner rules; omit it for pure
+ * single-tooth derivation. A wrapped arm REPLACES the derivation from the tooth's own parts
+ * with the clasp's own side; a ball clasp's contact still counts.
  */
 export function getMinorConnectorSupportSides(tooth, neighbors = null) {
-  const sides = { mesial: false, distal: false };
-  if (!tooth || !Array.isArray(tooth.componentPlacements)) return sides;
+  if (!tooth || !Array.isArray(tooth.componentPlacements)) return { mesial: false, distal: false };
+  const sides = getBallClaspConnectorSides(tooth, neighbors);
 
   const wrappedArmSide = getWrappedArmConnectorSide(tooth);
   if (wrappedArmSide) {
@@ -264,8 +295,8 @@ export function getMinorConnectorSupportSides(tooth, neighbors = null) {
   }
 
   const meshSides = getMeshMinorConnectorSides(tooth, neighbors);
-  sides.mesial = meshSides.mesial;
-  sides.distal = meshSides.distal;
+  if (meshSides.mesial) sides.mesial = true;
+  if (meshSides.distal) sides.distal = true;
 
   for (const placement of tooth.componentPlacements) {
     const id = placement?.componentId;

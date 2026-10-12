@@ -1,5 +1,7 @@
 import {
   ACTION_UPON_FAILURE,
+  isBallClaspComponent,
+  isBallClaspRetainerRival,
   isBarComponent,
   isClaspComponent,
   isMajorConnectorComponent,
@@ -93,6 +95,21 @@ export function assessPlacementCriteria(tooth, selectedComponent, componentById)
         `Tooth ${toothId} already has ${selectedIsBar ? "a clasp" : "a bar"}; replacing with ${selectedComponent.id}.`,
         ACTION_UPON_FAILURE.REMOVE_THEN_PLACE,
         barClaspConflicts
+      );
+    }
+  }
+
+  // Retainer Type is ONE slot: a ball clasp (4) and a clasp, ring or bar replace each other.
+  const selectedIsBallClasp = isBallClaspComponent(selectedComponent);
+  if (selectedIsBallClasp || isBallClaspRetainerRival(selectedComponent)) {
+    const retainerConflicts = existingComponents.filter((id) =>
+      selectedIsBallClasp ? isBallClaspRetainerRival(id) : isBallClaspComponent(id)
+    );
+    if (retainerConflicts.length > 0) {
+      return failure(
+        `Tooth ${toothId} already has ${selectedIsBallClasp ? "a clasp or bar" : "a ball clasp"}; replacing with ${selectedComponent.id}.`,
+        ACTION_UPON_FAILURE.REMOVE_THEN_PLACE,
+        retainerConflicts
       );
     }
   }

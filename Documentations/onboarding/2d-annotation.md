@@ -112,12 +112,12 @@ It's reached by opening a case from the case list: `2DAnnotation.html?id=<encryp
 |---|---|---|
 | `components.js` | 17KB | The **barrel**: owns `COMPONENT_CATALOG`/`COMPONENT_TABS`, and re-exports everything below. Nothing outside this cluster imports the files below directly. |
 | `components.major.js` | 45KB | Major connectors — the biggest and most self-contained (only depends on `constants.js`). |
-| `components.clasp.js` | 26KB | Retainer/reciprocating/ring clasps. |
+| `components.clasp.js` | 32KB | Retainer/reciprocating/ring clasps, plus the ball clasp: it sits in the embrasure between two teeth (upper and lower), stored as the mesial of the tooth behind the contact (11's and 41's mesials are the midlines), with per-jaw art and fitted positions. It saves as Retainer Type 4 (a web addition to the desktop enum), so it shares that tooth's one retainer slot with a clasp, ring or bar. |
 | `components.bar.js` | 20KB | I/S/U/Y/T bars — geometry is coupled to per-tooth tuning tables (see gotcha below). |
 | `components.mesh.js` | 18KB | Mesh types + the shared asset-path root most other component files import. |
 | `components.rest.js` | 16KB | Rest-seats/onlays, cingulum rests. |
 | `components.plate.js` | 12KB | Proximal/mesh plates + the sync rule that keeps them consistent with the major connector. |
-| `components.minor.js` | 7KB | Minor connectors — geometry only, not an independently placeable catalog item. |
+| `components.minor.js` | 13KB | Minor connectors — geometry and which embrasures get one (a ball clasp's contact gets one shared connector); not an independently placeable catalog item. |
 
 **Save/load pipeline** (the jaw-struct wire format — see dedicated section below)
 | File | Size | Purpose |

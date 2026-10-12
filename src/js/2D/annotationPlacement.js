@@ -1,6 +1,7 @@
 import {
   ACTION_UPON_FAILURE,
   ASSEMBLY_REST_SUGGESTION_IDS,
+  canPlaceBallClasp,
   COMPONENT_BY_ID,
   getBarPlacementSurfaceForTooth,
   extendMajorConnectorOntoTooth,
@@ -8,6 +9,7 @@ import {
   getMajorConnectorSpanTeeth,
   majorConnectorRunsToMidline,
   hasPalatalHolePlacementOnUpperArch,
+  isBallClaspComponent,
   isBarComponent,
   isReciprocatingClaspComponent,
   isRingClaspComponent,
@@ -253,7 +255,8 @@ export function placeSelectedComponentOnTooth(toothId, placementContext = null) 
     isRetainerClaspComponent(selectedComponent) ||
     isReciprocatingClaspComponent(selectedComponent) ||
     isRingClaspComponent(selectedComponent) ||
-    isBarComponent(selectedComponent);
+    isBarComponent(selectedComponent) ||
+    isBallClaspComponent(selectedComponent);
   const surface = normalizeSurface(placementContext?.surface);
   const targetSurface = requiresSurface ? surface : null;
 
@@ -281,10 +284,19 @@ export function placeSelectedComponentOnTooth(toothId, placementContext = null) 
       setMessage(`For ${selectedComponent.label}, click a highlighted tooth near a mesh-bearing tooth.`, true);
       return;
     }
+    if (isBallClaspComponent(selectedComponent)) {
+      setMessage(`For ${selectedComponent.label}, click one of the ball clasps shown between two teeth.`, true);
+      return;
+    }
     setMessage(
       `For ${selectedComponent.label}, click a rest suggestion point (mesial, distal, or lingual).`,
       true
     );
+    return;
+  }
+
+  if (isBallClaspComponent(selectedComponent) && !canPlaceBallClasp(state.teeth, toothId, targetSurface)) {
+    setMessage("A ball clasp sits between two present teeth — click one of the ball clasps shown.", true);
     return;
   }
 

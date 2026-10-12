@@ -237,6 +237,19 @@ export const COMPONENT_CATALOG = [
     conflictsWith: [],
     actionUponFailure: ACTION_UPON_FAILURE.REMOVE_THEN_PLACE,
   },
+  // Sits in the embrasure between two teeth, not on one tooth's surface — stored on the
+  // tooth behind it (see components.clasp.js). Not a circumferential clasp.
+  {
+    id: "ball-clasp",
+    label: "Ball Clasp",
+    shortLabel: "BL",
+    icon: "../../assets/menu-icon/clasps/Ball_Clasp.png",
+    tab: "clasps",
+    requiresPresence: true,
+    requiresMissing: false,
+    conflictsWith: [],
+    actionUponFailure: ACTION_UPON_FAILURE.PREVENT_PLACEMENT,
+  },
   {
     id: "bar-i",
     label: "I Bar",
@@ -474,6 +487,11 @@ export {
 } from "./components.plate.js";
 
 export {
+  BALL_CLASP_COMPONENT_ID,
+  canPlaceBallClasp,
+  getBallClaspPartnerToothId,
+  getBallClaspSurfacesForTooth,
+  getBallClaspVisual,
   getRetainerClaspAssetReference,
   getReciprocatingClaspAssetReference,
   getRingClaspAssetReference,
@@ -484,10 +502,13 @@ export {
   getRetainerClaspPlacementRenderScale,
   getRetainerClaspSuggestionPointsForTooth,
   getRetainerClaspSuggestionRadius,
+  isBallClaspComponent,
+  isBallClaspRetainerRival,
   isReciprocatingClaspComponent,
   isRingClaspComponent,
   isRetainerClaspComponent,
   isClaspComponent,
+  pruneInvalidBallClaspPlacementsInJaw,
 } from "./components.clasp.js";
 
 export {

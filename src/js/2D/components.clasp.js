@@ -1,5 +1,6 @@
+import { isBarComponent } from "./components.bar.js";
 import { getComponentTemplateToothId } from "./components.mesh.js";
-import { TOOTH_ORDER } from "./constants.js";
+import { getNeighborToothIds, TOOTH_ORDER } from "./constants.js";
 
 export const CLASP_CIRC_SURFACE = Object.freeze({
   MESIAL_BUCCAL: "mesial_buccal",
@@ -817,4 +818,163 @@ function normalizeClaspSurface(surface) {
   const s = surface.toLowerCase();
   if (CLASP_CIRC_SURFACE_ORDER.includes(s)) return s;
   return null;
+}
+
+// ── Ball clasp ───────────────────────────────────────────────────────────────
+// Sits in the embrasure between two teeth, not on one tooth's surface, so it stays out of
+// CLASP_COMPONENT_IDS: it brings no reciprocation. It saves as Retainer Type 4 on the tooth
+// behind its contact, so it shares that tooth's one retainer slot with a clasp, ring or bar.
+
+export const BALL_CLASP_COMPONENT_ID = "ball-clasp";
+
+/** A tooth's ball clasp is always at its mesial contact; 11's and 41's are the midlines. */
+const BALL_CLASP_SURFACE = "mesial";
+
+const BALL_CLASP_ASSET_BASE = "../../assets/RPD_Component/acrylic_clasps";
+
+/** Art px -> arch units: sizes the ball and wire against the teeth as in the reference design. */
+const BALL_CLASP_RENDER_SCALE = 0.42;
+
+/**
+ * The exported art, drawn for the screen-left side of each jaw (upper right, lower right):
+ * `ball` is the ball centre and `end` the wire tip, in the art's own px. The screen-right
+ * side (upper left, lower left) draws the same art mirrored.
+ */
+const BALL_CLASP_ART = Object.freeze({
+  U_1M: { file: "Ball_U_1M.svg", width: 28, height: 111, ball: { x: 13.5, y: 13.5 }, end: { x: 18.5, y: 104.5 } },
+  U_1D_2M: { file: "Ball_U_1D_2M.svg", width: 47, height: 95, ball: { x: 14.5, y: 14.5 }, end: { x: 45.5, y: 88.5 } },
+  U_2D_3M: { file: "Ball_U_2D_3M.svg", width: 74, height: 90, ball: { x: 15.5, y: 15.5 }, end: { x: 70.5, y: 80.5 } },
+  U_3D_4M: { file: "Ball_U_3D_4M.svg", width: 103, height: 79, ball: { x: 17.3, y: 25.1 }, end: { x: 96.6, y: 55.6 } },
+  U_4D_5M: { file: "Ball_U_4D_5M.svg", width: 101, height: 53, ball: { x: 14.5, y: 15.5 }, end: { x: 96.5, y: 40.5 } },
+  U_5D_6M: { file: "Ball_U_5D_6M.svg", width: 103, height: 47, ball: { x: 15.5, y: 15.5 }, end: { x: 98.5, y: 34.5 } },
+  U_6D_7M: { file: "Ball_U_6D_7M.svg", width: 103, height: 47, ball: { x: 15.5, y: 15.5 }, end: { x: 98.5, y: 34.5 } },
+  U_7D_8M: { file: "Ball_U_7D_8M.svg", width: 107, height: 55, ball: { x: 16.5, y: 21.6 }, end: { x: 100.7, y: 34.7 } },
+  L_1M: { file: "Ball_L_1M.svg", width: 28, height: 81, ball: { x: 13.5, y: 67.5 }, end: { x: 18.5, y: 6.5 } },
+  L_1D_2M: { file: "Ball_L_1D_2M.svg", width: 45, height: 84, ball: { x: 16.4, y: 66.9 }, end: { x: 40.0, y: 13.7 } },
+  L_2D_3M: { file: "Ball_L_2D_3M.svg", width: 53, height: 79, ball: { x: 14.5, y: 63.5 }, end: { x: 38.5, y: 4.5 } },
+  L_3D_4M: { file: "Ball_L_3D_4M.svg", width: 83, height: 75, ball: { x: 15.2, y: 57.2 }, end: { x: 74.8, y: 8.2 } },
+  L_4D_5M: { file: "Ball_L_4D_5M.svg", width: 104, height: 58, ball: { x: 17.9, y: 40.8 }, end: { x: 89.6, y: 3.8 } },
+  L_5D_6M: { file: "Ball_L_5D_6M.svg", width: 101, height: 43, ball: { x: 12.5, y: 29.5 }, end: { x: 93.5, y: 2.5 } },
+  L_6D_7M: { file: "Ball_L_6D_7M.svg", width: 102, height: 45, ball: { x: 14.5, y: 29.5 }, end: { x: 98.5, y: 11.5 } },
+  L_7D_8M: { file: "Ball_L_7D_8M.svg", width: 102, height: 45, ball: { x: 14.5, y: 29.5 }, end: { x: 98.5, y: 11.5 } },
+});
+
+/**
+ * Each contact, keyed by the tooth behind it, which owns that contact's ball clasp — one
+ * contact per tooth, matching the single Retainer Type slot. `ball` is where the ball centre
+ * sits in the owner's tooth-local frame, fitted per contact on the rendered arch so the wire
+ * runs through the contact and the ball sits in the buccal embrasure; neither arch is an
+ * exact mirror of itself.
+ */
+const BALL_CLASP_BY_OWNER = Object.freeze({
+  "11": { art: "U_1M", ball: { x: 29.6, y: -29.7 } },
+  "12": { art: "U_1D_2M", ball: { x: 13.2, y: -30.2 } },
+  "13": { art: "U_2D_3M", ball: { x: 3.7, y: -31.1 } },
+  "14": { art: "U_3D_4M", ball: { x: -8.8, y: -31.8 } },
+  "15": { art: "U_4D_5M", ball: { x: -14.4, y: -31.2 } },
+  "16": { art: "U_5D_6M", ball: { x: -18.7, y: -38.6 } },
+  "17": { art: "U_6D_7M", ball: { x: -20.8, y: -34.8 } },
+  "18": { art: "U_7D_8M", ball: { x: -22.3, y: -32.0 } },
+  "22": { art: "U_1D_2M", ball: { x: -11.7, y: -30.2 } },
+  "23": { art: "U_2D_3M", ball: { x: -4.4, y: -31.2 } },
+  "24": { art: "U_3D_4M", ball: { x: 11.1, y: -31.0 } },
+  "25": { art: "U_4D_5M", ball: { x: 14.6, y: -31.8 } },
+  "26": { art: "U_5D_6M", ball: { x: 20.4, y: -38.4 } },
+  "27": { art: "U_6D_7M", ball: { x: 21.7, y: -35.4 } },
+  "28": { art: "U_7D_8M", ball: { x: 22.7, y: -32.3 } },
+  "41": { art: "L_1M", ball: { x: 15.2, y: 19.4 } },
+  "42": { art: "L_1D_2M", ball: { x: 10.7, y: 22.2 } },
+  "43": { art: "L_2D_3M", ball: { x: 10.1, y: 23.6 } },
+  "44": { art: "L_3D_4M", ball: { x: 3.9, y: 29.6 } },
+  "45": { art: "L_4D_5M", ball: { x: -5.0, y: 31.4 } },
+  "46": { art: "L_5D_6M", ball: { x: -5.9, y: 41.6 } },
+  "47": { art: "L_6D_7M", ball: { x: -12.2, y: 36.7 } },
+  "48": { art: "L_7D_8M", ball: { x: -13.6, y: 34.6 } },
+  "32": { art: "L_1D_2M", ball: { x: -9.9, y: 21.9 } },
+  "33": { art: "L_2D_3M", ball: { x: -9.4, y: 23.2 } },
+  "34": { art: "L_3D_4M", ball: { x: -3.5, y: 29.1 } },
+  "35": { art: "L_4D_5M", ball: { x: 5.2, y: 30.9 } },
+  "36": { art: "L_5D_6M", ball: { x: 5.9, y: 41.5 } },
+  "37": { art: "L_6D_7M", ball: { x: 12.3, y: 36.3 } },
+  "38": { art: "L_7D_8M", ball: { x: 13.7, y: 34.3 } },
+});
+
+/** The owner's ball clasp spot, or null when `surface` is not its contact. */
+function ballClaspSpot(toothId, surface) {
+  return surface === BALL_CLASP_SURFACE ? BALL_CLASP_BY_OWNER[String(toothId)] || null : null;
+}
+
+export function isBallClaspComponent(componentOrId) {
+  const id =
+    typeof componentOrId === "object" && componentOrId !== null
+      ? String(componentOrId.id || "")
+      : String(componentOrId || "");
+  return id === BALL_CLASP_COMPONENT_ID;
+}
+
+/** A clasp, ring or bar: the retentive elements a ball clasp shares Retainer Type with. */
+export function isBallClaspRetainerRival(componentOrId) {
+  return (
+    isRetainerClaspComponent(componentOrId) ||
+    isRingClaspComponent(componentOrId) ||
+    isBarComponent(componentOrId)
+  );
+}
+
+/** The surface a tooth holds a ball clasp on — none for 21 and 31 (the midlines are 11's and 41's). */
+export function getBallClaspSurfacesForTooth(toothId) {
+  return BALL_CLASP_BY_OWNER[String(toothId)] ? [BALL_CLASP_SURFACE] : [];
+}
+
+/** The tooth across the contact a ball clasp on `toothId` / `surface` sits in. */
+export function getBallClaspPartnerToothId(toothId, surface) {
+  if (!ballClaspSpot(toothId, surface)) return null;
+  const id = String(toothId);
+  const jaw = TOOTH_ORDER.upper.includes(id) ? "upper" : "lower";
+  return getNeighborToothIds(id, jaw)[surface] || null;
+}
+
+/** A ball clasp engages the contact between two teeth, so both must be present. */
+export function canPlaceBallClasp(teethById, toothId, surface) {
+  const partnerId = getBallClaspPartnerToothId(toothId, surface);
+  return Boolean(
+    partnerId && teethById?.[String(toothId)]?.isPresent && teethById?.[partnerId]?.isPresent
+  );
+}
+
+/**
+ * One ball clasp's art in its owner's tooth-local frame: translate to (x, y), flip when
+ * `mirrored`, then draw `image`. `wireEnd` is relative to the ball, for a hit line along it.
+ */
+export function getBallClaspVisual(toothId, surface) {
+  const spot = ballClaspSpot(toothId, surface);
+  const art = spot ? BALL_CLASP_ART[spot.art] : null;
+  if (!art) return null;
+  const s = BALL_CLASP_RENDER_SCALE;
+  return {
+    href: `${BALL_CLASP_ASSET_BASE}/${art.file}`,
+    x: spot.ball.x,
+    y: spot.ball.y,
+    // upper left (2x) and lower left (3x) are the screen-right side
+    mirrored: /^[23]/.test(String(toothId)),
+    image: { x: -art.ball.x * s, y: -art.ball.y * s, width: art.width * s, height: art.height * s },
+    wireEnd: { x: (art.end.x - art.ball.x) * s, y: (art.end.y - art.ball.y) * s },
+  };
+}
+
+/** Drops ball clasps whose embrasure lost a tooth: presence is edited with the jaw unlocked. */
+export function pruneInvalidBallClaspPlacementsInJaw(teethById, jaw) {
+  for (const toothId of TOOTH_ORDER[jaw] || []) {
+    const tooth = teethById?.[toothId];
+    if (!tooth || !Array.isArray(tooth.componentPlacements)) continue;
+    const next = tooth.componentPlacements.filter(
+      (entry) =>
+        !isBallClaspComponent(entry?.componentId) || canPlaceBallClasp(teethById, toothId, entry.surface)
+    );
+    if (next.length === tooth.componentPlacements.length) continue;
+    tooth.componentPlacements = next;
+    if (!next.some((entry) => isBallClaspComponent(entry.componentId)) && Array.isArray(tooth.components)) {
+      tooth.components = tooth.components.filter((id) => !isBallClaspComponent(id));
+    }
+  }
 }

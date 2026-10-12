@@ -1,4 +1,9 @@
-import { COMPONENT_BY_ID, isMeshComponent } from "./components.js";
+import {
+  COMPONENT_BY_ID,
+  isBallClaspComponent,
+  isBallClaspRetainerRival,
+  isMeshComponent,
+} from "./components.js";
 import { forEachTooth, STATUS_VALUES, TOOTH_POSITION_MAP, TOOTH_SCALE_BY_UNIT } from "./constants.js";
 import { state } from "./2DAnnotation.js";
 import { normalizeSurface } from "./toothUtils.js";
@@ -110,6 +115,11 @@ export function addPlacement(tooth, componentId, surface) {
     tooth.componentPlacements = tooth.componentPlacements.filter(
       (entry) => !RECIPROCATING_SLOT_IDS.has(entry.componentId)
     );
+  }
+  // Retainer Type is one slot too: a ball clasp and a clasp, ring or bar drop each other.
+  if (isBallClaspComponent(componentId) || isBallClaspRetainerRival(componentId)) {
+    const rival = isBallClaspComponent(componentId) ? isBallClaspRetainerRival : isBallClaspComponent;
+    tooth.componentPlacements = tooth.componentPlacements.filter((entry) => !rival(entry.componentId));
   }
   tooth.componentPlacements.push({
     componentId,

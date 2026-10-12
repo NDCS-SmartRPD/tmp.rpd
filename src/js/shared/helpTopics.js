@@ -828,16 +828,19 @@ export const HELP_TOPICS = [
     id: "clasps",
     title: "Place a clasp",
     page: "annotation_2d",
-    keywords: ["clasp", "retainer", "reciprocal", "reciprocating", "buccal", "lingual", "place", "arm"],
-    phrases: ["how do i add a clasp", "how do i place a retainer"],
+    keywords: ["clasp", "retainer", "reciprocal", "reciprocating", "buccal", "lingual", "place", "arm", "ball"],
+    phrases: ["how do i add a clasp", "how do i place a retainer", "how do i add a ball clasp"],
     answer:
-      "Open the CLASPS tab, choose the clasp type, then select the tooth. The reciprocating element on the opposite surface is handled for you where the design calls for it.",
+      "Open the CLASPS tab, choose the clasp type, then select the tooth. The reciprocating element on the opposite surface is handled for you where the design calls for it. A Ball Clasp goes between two teeth: select one of the faint ball clasps shown at the contacts.",
     steps: [
       LOCK_STEP,
       openTab("clasps", "Open the CLASPS tab in the Components panel."),
       pickFromTab("clasps", "Choose the clasp type."),
       pickOnTouch("In Mobile: tap a tooth, then pick CLASPS and the clasp type from the menu that opens."),
-      placeAt(".clasp-suggestion-group", "Select a highlighted dot beside a tooth — the clasp goes on that side."),
+      placeAt(
+        ".clasp-suggestion-group, .ball-clasp-suggestion",
+        "Select a highlighted dot beside a tooth — the clasp goes on that side. A ball clasp shows faintly between two teeth instead."
+      ),
       FINISH_PLACING,
     ],
     related: ["component-tabs", "bars", "remove-component"],

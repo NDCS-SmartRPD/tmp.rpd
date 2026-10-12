@@ -425,7 +425,7 @@ describe("Show me is done on the page", () => {
   // marks, so the back teeth it can go on count for it.
   test.each([
     ["rests", `${REST_SEAT_MARKS}, .tooth-onlay-suggestible`],
-    ["clasps", ".clasp-suggestion-group"],
+    ["clasps", ".clasp-suggestion-group, .ball-clasp-suggestion"],
     ["plates", ".plate-suggestion-visual"],
   ])("%s is placed by clicking one of the marks the pick lights on the arch", (id, marks) => {
     const step = placing(id);

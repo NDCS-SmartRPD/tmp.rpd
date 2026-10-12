@@ -323,7 +323,10 @@ export function resolveJawStructDesign(parsed) {
         else reportUnmapped(RETAINER_BAR_CATEGORY_FIELD, barCode);
       } else {
         const id = RETAINER_TYPE.get(retCode);
-        if (id) {
+        if (id === "ball-clasp") {
+          // A tooth's ball clasp always sits at its mesial contact, so it carries no orientation.
+          entry.placements.push({ componentId: id, surface: "mesial" });
+        } else if (id) {
           const orientField = retCode === 2 ? RETAINER_RING_TYPE_FIELD : RETAINER_CLASP_TYPE_FIELD;
           entry.placements.push({ componentId: id, surface: claspSurfaceFromField(f, orientField) });
         } else reportUnmapped(RETAINER_TYPE_FIELD, retCode);
@@ -535,7 +538,7 @@ function encodeToothLines(arrayIdx, fdi, rec, hasMesh) {
         ];
 
   // Retainer: type + bar shape (category) are web-owned (derived live). The bar
-  // mesial/distal side, clasp/ring orientation come from the loaded data.
+  // mesial/distal side, clasp/ring orientation come from the loaded data. A ball clasp is 4.
   let retainerType = 0;
   let barCategory = Number(rawOr(RETAINER_BAR_CATEGORY_FIELD, 0));
   const barId = comps.find((id) => String(id).startsWith("bar-"));
@@ -544,7 +547,7 @@ function encodeToothLines(arrayIdx, fdi, rec, hasMesh) {
   else if (barId) {
     retainerType = 3;
     barCategory = inverseOf(RETAINER_BAR_CATEGORY).get(barId) ?? barCategory;
-  }
+  } else if (comps.includes("ball-clasp")) retainerType = 4;
   // Derived live from the RETENTIVE clasp's surface so edits persist (the reci's is derived
   // from it on decode). Falls back to loaded raw, or 0, only when nothing is placed.
   const retainerClaspPl = placements.find((p) => p.componentId === "retainer-clasp");

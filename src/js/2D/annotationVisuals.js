@@ -1,7 +1,11 @@
 import {
   ASSEMBLY_REST_SUGGESTION_IDS,
   augmentTeethForPalatalBarConnectorNeighbors,
+  BALL_CLASP_COMPONENT_ID,
+  canPlaceBallClasp,
   COMPONENT_BY_ID,
+  getBallClaspSurfacesForTooth,
+  getBallClaspVisual,
   getBarUserOffset,
   getReciprocatingClaspAssetReference,
   getRingClaspAssetReference,
@@ -51,6 +55,7 @@ import {
   PALATAL_STRAP_MAJOR_COMPONENT_ID,
   isPalatalStrapMajorComponent,
   PALATAL_STRAP_ARCH_POLYGON,
+  isBallClaspComponent,
   isBarComponent,
   isBarPlacementSurface,
   isReciprocatingClaspComponent,
@@ -93,6 +98,7 @@ import {
 } from "./constants.js";
 import {
   REST_CALIBRATION_COMPONENT_ID,
+  openRemoveComponentPicker,
   state,
   positionAnteriorRestPanel,
   setMessage,
@@ -339,6 +345,25 @@ function getMinorConnectorSharedNeighborId(toothId, jaw, side) {
   return neighborSides[facingSide] ? String(neighborId) : null;
 }
 
+/**
+ * One minor connector per supported embrasure side. A shared embrasure gets a single `mid`
+ * connector, owned by the higher-id tooth; a solo side draws its directional half.
+ */
+function appendMinorConnectorVisuals(group, tooth, toothId, jaw, mirrored) {
+  const supportSides = getMinorConnectorSupportSides(tooth, getNeighborTeeth(toothId, jaw));
+  for (const side of ["mesial", "distal"]) {
+    if (!supportSides[side]) continue;
+    const sharedNeighborId = getMinorConnectorSharedNeighborId(toothId, jaw, side);
+    if (sharedNeighborId) {
+      if (Number(toothId) > Number(sharedNeighborId)) {
+        appendMinorConnectorVisual(group, toothId, jaw, "mid", null, mirrored);
+      }
+      continue;
+    }
+    appendMinorConnectorVisual(group, toothId, jaw, side, side, mirrored);
+  }
+}
+
 /** Build + append one minor-connector image for a tooth side ("mesial"/"distal") and variant. */
 function appendMinorConnectorVisual(group, toothId, jaw, variant, side, mirrored) {
   const href = getMinorConnectorAssetReference(toothId, variant);
@@ -381,7 +406,12 @@ function centeredImageAttrs(href, width, height) {
 function appendPlacedComponentMarkers(group, tooth, toothId, jaw) {
   ensureToothPlacementState(tooth);
   const { mirrored } = getToothAssetSpec(toothId);
-  if (!tooth.componentPlacements.length) return;
+  if (!tooth.componentPlacements.length) {
+    // A bare tooth can still owe the shared connector of a neighbour's ball clasp: 21 draws
+    // the upper midline's, as the higher id.
+    if (tooth.isPresent) appendMinorConnectorVisuals(group, tooth, toothId, jaw, mirrored);
+    return;
+  }
   if (!tooth.isPresent) {
     const hasBarPlacement = tooth.componentPlacements.some((placement) =>
       isBarComponent(placement.componentId) && isBarPlacementSurface(normalizeSurface(placement.surface))
@@ -414,23 +444,7 @@ function appendPlacedComponentMarkers(group, tooth, toothId, jaw) {
     renderJaw(jaw);
   };
 
-  // One minor connector per supported embrasure side. A shared embrasure gets a single `mid`
-  // connector, owned by the higher-id tooth; a solo side draws its directional half.
-  const minorConnectorSupportSides = getMinorConnectorSupportSides(
-    tooth,
-    getNeighborTeeth(toothId, jaw)
-  );
-  for (const side of ["mesial", "distal"]) {
-    if (!minorConnectorSupportSides[side]) continue;
-    const sharedNeighborId = getMinorConnectorSharedNeighborId(toothId, jaw, side);
-    if (sharedNeighborId) {
-      if (Number(toothId) > Number(sharedNeighborId)) {
-        appendMinorConnectorVisual(group, toothId, jaw, "mid", null, mirrored);
-      }
-      continue;
-    }
-    appendMinorConnectorVisual(group, toothId, jaw, side, side, mirrored);
-  }
+  appendMinorConnectorVisuals(group, tooth, toothId, jaw, mirrored);
 
   for (const placement of tooth.componentPlacements) {
     if (!isRestComponent(placement.componentId)) continue;
@@ -1198,6 +1212,107 @@ function hasRetainerClaspPlacementAtSurface(tooth, surface) {
   });
 }
 
+// One ball clasp's art, flipped about the ball on the screen-right side, plus a wide
+// transparent line over ball and wire as its click target.
+function buildBallClaspGroup(visual, className, artClass, withHitLine) {
+  const flip = visual.mirrored ? -1 : 1;
+  const g = svgEl("g", { class: className, transform: `translate(${visual.x} ${visual.y})` });
+  // The steel filter sits on an unmirrored wrapper: under scale(-1 1) the lighting renders black.
+  const art = svgEl("g", { class: artClass });
+  const image = svgEl("image", {
+    href: visual.href,
+    x: visual.image.x.toFixed(2),
+    y: visual.image.y.toFixed(2),
+    width: visual.image.width.toFixed(2),
+    height: visual.image.height.toFixed(2),
+    preserveAspectRatio: "xMidYMid meet",
+    "data-component-id": BALL_CLASP_COMPONENT_ID,
+  });
+  if (visual.mirrored) image.setAttribute("transform", "scale(-1 1)");
+  art.appendChild(image);
+  g.appendChild(art);
+  if (withHitLine) {
+    g.appendChild(
+      svgEl("line", {
+        x1: "0",
+        y1: "0",
+        x2: (flip * visual.wireEnd.x).toFixed(2),
+        y2: visual.wireEnd.y.toFixed(2),
+        class: "ball-clasp-hit",
+      })
+    );
+  }
+  return g;
+}
+
+// Placed ball clasps, for the layer above every tooth: the art spans two teeth, so inside
+// the owner's group the neighbour drawn after it would paint over the wire.
+function appendBallClaspVisuals(group, tooth, toothId, jaw) {
+  const placements = (tooth.componentPlacements || []).filter((entry) =>
+    isBallClaspComponent(entry.componentId)
+  );
+  if (!placements.length) return;
+  // Clickable only with the ball clasp tool (a click removes it) or in remove mode (opens the
+  // owner's list); otherwise clicks fall through to the teeth underneath.
+  const interactive =
+    state.designMode &&
+    (state.removeComponentMode || isBallClaspComponent(state.selectedComponentId));
+  for (const placement of placements) {
+    const surface = normalizeSurface(placement.surface);
+    const visual = getBallClaspVisual(toothId, surface);
+    if (!visual) continue;
+    const g = buildBallClaspGroup(visual, "ball-clasp-placement", "ball-clasp-art", interactive);
+    g.setAttribute("data-surface", surface);
+    if (interactive) {
+      g.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (state.removeComponentMode) {
+          openRemoveComponentPicker(toothId, jaw, event);
+          return;
+        }
+        placeSelectedComponentOnTooth(toothId, { surface });
+        renderJaw(jaw);
+      });
+      g.addEventListener("contextmenu", (event) => {
+        if (window.matchMedia?.("(pointer: coarse)").matches) return;
+        event.preventDefault();
+        event.stopPropagation();
+        openRemoveComponentPicker(toothId, jaw, event);
+      });
+    }
+    group.appendChild(g);
+  }
+}
+
+// Faint ball clasps at each free embrasure this tooth owns; clicking one places it there.
+function appendBallClaspSuggestions(group, tooth, toothId, jaw) {
+  if (state.suppressArchPlacementSuggestions) return;
+  if (!state.designMode || !isBallClaspComponent(state.selectedComponentId)) return;
+  ensureToothPlacementState(tooth);
+  for (const surface of getBallClaspSurfacesForTooth(toothId)) {
+    if (!canPlaceBallClasp(state.teeth, toothId, surface)) continue;
+    const placed = tooth.componentPlacements.some(
+      (entry) => isBallClaspComponent(entry.componentId) && normalizeSurface(entry.surface) === surface
+    );
+    if (placed) continue;
+    const visual = getBallClaspVisual(toothId, surface);
+    if (!visual) continue;
+    const g = buildBallClaspGroup(
+      visual,
+      `ball-clasp-suggestion ball-clasp-suggestion-${surface}`,
+      "ball-clasp-art is-ghost",
+      true
+    );
+    g.setAttribute("data-surface", surface);
+    g.addEventListener("click", (event) => {
+      event.stopPropagation();
+      placeSelectedComponentOnTooth(toothId, { surface });
+      renderJaw(jaw);
+    });
+    group.appendChild(g);
+  }
+}
+
 function showBarSuggestions() {
   if (!state.designMode) return false;
   const sel = COMPONENT_BY_ID.get(state.selectedComponentId || "");
@@ -1749,6 +1864,8 @@ function appendPalatalStrapArchOverlay(svg) {
 
 export {
   applyToothStatusClass,
+  appendBallClaspSuggestions,
+  appendBallClaspVisuals,
   appendPlacedComponentMarkers,
   appendRetainerClaspSuggestionPoints,
   appendPalatalBarArchOverlay,
