@@ -525,7 +525,7 @@ function appendPlacedComponentMarkers(group, tooth, toothId, jaw) {
       ? getRingClaspPlacementOffset(placement.componentId, toothId, surface)
       : getRetainerClaspPlacementOffset(placement.componentId, toothId, surface);
     const outerG = svgEl("g", {
-      transform: `translate(${point.x + claspOffset.x} ${point.y + claspOffset.y})`,
+      transform: `translate(${point.x + claspOffset.x} ${point.y + claspOffset.y}) scale(${mirrored ? -1 : 1} 1)`,
       class: `clasp-placement-root clasp-placement-${surface}`,
     });
 
@@ -543,21 +543,16 @@ function appendPlacedComponentMarkers(group, tooth, toothId, jaw) {
       const width = imageSize.width * claspScale;
       const height = imageSize.height * claspScale;
 
-      const image = svgEl("image", {
-        ...centeredImageAttrs(assetHref, width, height),
-        class: `clasp-placement-image clasp-placement-${surface}`,
-        "data-surface": surface,
-        "data-component-id": placement.componentId,
-      });
-      // Mirrored on the image, not the group: the steel filter renders black on a mirrored element.
-      if (mirrored) image.setAttribute("transform", "scale(-1 1)");
-      if (isRetainer && state.jawMaterial === 2) {
-        const metal = svgEl("g", { class: "clasp-placement-metal" });
-        metal.appendChild(image);
-        outerG.appendChild(metal);
-      } else {
-        outerG.appendChild(image);
-      }
+      // Full acrylic draws the retainer, a wire clasp, in the metal grey.
+      const acrylicWire = isRetainer && state.jawMaterial === 2;
+      outerG.appendChild(
+        svgEl("image", {
+          ...centeredImageAttrs(assetHref, width, height),
+          class: `clasp-placement-image clasp-placement-${surface}${acrylicWire ? " is-acrylic" : ""}`,
+          "data-surface": surface,
+          "data-component-id": placement.componentId,
+        })
+      );
     } else {
       outerG.appendChild(
         svgEl("circle", {
@@ -1224,7 +1219,6 @@ function hasRetainerClaspPlacementAtSurface(tooth, surface) {
 function buildBallClaspGroup(visual, className, artClass, withHitLine) {
   const flip = visual.mirrored ? -1 : 1;
   const g = svgEl("g", { class: className, transform: `translate(${visual.x} ${visual.y})` });
-  // The steel filter sits on an unmirrored wrapper: under scale(-1 1) the lighting renders black.
   const art = svgEl("g", { class: artClass });
   const image = svgEl("image", {
     href: visual.href,

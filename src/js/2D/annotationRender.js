@@ -191,73 +191,6 @@ function appendSvgTintFilters(defs) {
   }
 }
 
-// Wire clasps read as polished steel (the ball clasp always, the retainer clasp in full
-// acrylic): the art's alpha is the bump map, lit for shading and a specular highlight, then
-// clipped back to the art. Its colours are ignored.
-function appendClaspMetalFilter(defs) {
-  const filterEl = svgEl("filter", {
-    id: "metal-clasp",
-    "color-interpolation-filters": "sRGB",
-    x: "-20%",
-    y: "-20%",
-    width: "140%",
-    height: "140%",
-  });
-  // The art's alpha is soft, so firm it up before it shapes the metal.
-  const firm = svgEl("feComponentTransfer", { in: "SourceAlpha", result: "alpha" });
-  firm.appendChild(svgEl("feFuncA", { type: "linear", slope: "1.6", intercept: "0" }));
-  filterEl.appendChild(firm);
-  filterEl.appendChild(svgEl("feGaussianBlur", { in: "alpha", stdDeviation: "0.9", result: "bump" }));
-  filterEl.appendChild(svgEl("feFlood", { "flood-color": "#7e858d", result: "steel" }));
-  filterEl.appendChild(svgEl("feComposite", { in: "steel", in2: "alpha", operator: "in", result: "base" }));
-  const diffuse = svgEl("feDiffuseLighting", {
-    in: "bump",
-    surfaceScale: "2",
-    diffuseConstant: "0.95",
-    "lighting-color": "#ffffff",
-    result: "diffuse",
-  });
-  diffuse.appendChild(svgEl("feDistantLight", { azimuth: "235", elevation: "40" }));
-  filterEl.appendChild(diffuse);
-  filterEl.appendChild(
-    svgEl("feComposite", {
-      in: "base",
-      in2: "diffuse",
-      operator: "arithmetic",
-      k1: "1",
-      k2: "0",
-      k3: "0",
-      k4: "0",
-      result: "shaded",
-    })
-  );
-  const specular = svgEl("feSpecularLighting", {
-    in: "bump",
-    surfaceScale: "2.5",
-    specularConstant: "0.8",
-    specularExponent: "28",
-    "lighting-color": "#ffffff",
-    result: "spec",
-  });
-  specular.appendChild(svgEl("feDistantLight", { azimuth: "235", elevation: "55" }));
-  filterEl.appendChild(specular);
-  filterEl.appendChild(svgEl("feComposite", { in: "spec", in2: "alpha", operator: "in", result: "specIn" }));
-  filterEl.appendChild(
-    svgEl("feComposite", {
-      in: "shaded",
-      in2: "specIn",
-      operator: "arithmetic",
-      k1: "0",
-      k2: "1",
-      k3: "1",
-      k4: "0",
-      result: "lit",
-    })
-  );
-  filterEl.appendChild(svgEl("feComposite", { in: "lit", in2: "alpha", operator: "in" }));
-  defs.appendChild(filterEl);
-}
-
 function buildJawTintFilter(jaw) {
   const filterEl = svgEl("filter", {
     id: `jawTint-${jaw}`,
@@ -296,7 +229,6 @@ function ensureArchTintDefs() {
     defs.appendChild(buildJawTintFilter(jaw));
   }
   appendSvgTintFilters(defs);
-  appendClaspMetalFilter(defs);
   host.appendChild(defs);
   document.body.appendChild(host);
 }
