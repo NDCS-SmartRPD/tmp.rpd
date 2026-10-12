@@ -3026,6 +3026,18 @@ button.upload3d-row {
   filter: saturate(1.2) brightness(1.08) contrast(1.04);
 }
 
+/* Full acrylic: the retainer clasp is wire set in the acrylic base, so it draws as steel.
+   The steel comes from the art's shape alone, so the colour tweak above is skipped. */
+.clasp-placement-metal {
+  -webkit-filter: url(#metal-clasp);
+  filter: url(#metal-clasp);
+}
+
+.clasp-placement-metal .clasp-placement-image {
+  -webkit-filter: none;
+  filter: none;
+}
+
 .rest-placement-marker {
   fill: #00bfa8;
   stroke: #ffffff;
@@ -3341,11 +3353,11 @@ button.upload3d-row {
   cursor: pointer;
 }
 
-/* Ball clasp: steel art (#metal-ball-clasp); clicks go to the transparent line over it. */
+/* Ball clasp: steel art (#metal-clasp); clicks go to the transparent line over it. */
 .ball-clasp-art {
   pointer-events: none;
-  -webkit-filter: url(#metal-ball-clasp);
-  filter: url(#metal-ball-clasp);
+  -webkit-filter: url(#metal-clasp);
+  filter: url(#metal-clasp);
 }
 
 .ball-clasp-art.is-ghost {

@@ -191,11 +191,12 @@ function appendSvgTintFilters(defs) {
   }
 }
 
-// Ball clasps read as polished steel: the art's alpha is the bump map, lit for shading and
-// a specular highlight, then clipped back to the art.
-function appendBallClaspMetalFilter(defs) {
+// Wire clasps read as polished steel (the ball clasp always, the retainer clasp in full
+// acrylic): the art's alpha is the bump map, lit for shading and a specular highlight, then
+// clipped back to the art. Its colours are ignored.
+function appendClaspMetalFilter(defs) {
   const filterEl = svgEl("filter", {
-    id: "metal-ball-clasp",
+    id: "metal-clasp",
     "color-interpolation-filters": "sRGB",
     x: "-20%",
     y: "-20%",
@@ -295,7 +296,7 @@ function ensureArchTintDefs() {
     defs.appendChild(buildJawTintFilter(jaw));
   }
   appendSvgTintFilters(defs);
-  appendBallClaspMetalFilter(defs);
+  appendClaspMetalFilter(defs);
   host.appendChild(defs);
   document.body.appendChild(host);
 }

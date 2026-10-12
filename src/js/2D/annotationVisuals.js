@@ -525,7 +525,7 @@ function appendPlacedComponentMarkers(group, tooth, toothId, jaw) {
       ? getRingClaspPlacementOffset(placement.componentId, toothId, surface)
       : getRetainerClaspPlacementOffset(placement.componentId, toothId, surface);
     const outerG = svgEl("g", {
-      transform: `translate(${point.x + claspOffset.x} ${point.y + claspOffset.y}) scale(${mirrored ? -1 : 1} 1)`,
+      transform: `translate(${point.x + claspOffset.x} ${point.y + claspOffset.y})`,
       class: `clasp-placement-root clasp-placement-${surface}`,
     });
 
@@ -543,14 +543,21 @@ function appendPlacedComponentMarkers(group, tooth, toothId, jaw) {
       const width = imageSize.width * claspScale;
       const height = imageSize.height * claspScale;
 
-      outerG.appendChild(
-        svgEl("image", {
-          ...centeredImageAttrs(assetHref, width, height),
-          class: `clasp-placement-image clasp-placement-${surface}`,
-          "data-surface": surface,
-          "data-component-id": placement.componentId,
-        })
-      );
+      const image = svgEl("image", {
+        ...centeredImageAttrs(assetHref, width, height),
+        class: `clasp-placement-image clasp-placement-${surface}`,
+        "data-surface": surface,
+        "data-component-id": placement.componentId,
+      });
+      // Mirrored on the image, not the group: the steel filter renders black on a mirrored element.
+      if (mirrored) image.setAttribute("transform", "scale(-1 1)");
+      if (isRetainer && state.jawMaterial === 2) {
+        const metal = svgEl("g", { class: "clasp-placement-metal" });
+        metal.appendChild(image);
+        outerG.appendChild(metal);
+      } else {
+        outerG.appendChild(image);
+      }
     } else {
       outerG.appendChild(
         svgEl("circle", {
