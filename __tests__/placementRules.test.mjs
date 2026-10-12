@@ -14,11 +14,9 @@ jest.mock("../src/js/2D/2DAnnotation.js", () => ({
   setMessage: () => {},
   getHistoryStateSignature: () => "",
   recordHistoryIfChanged: () => {},
-  // The real module owns the material gate the catalog imports; keep it faithful so the
+  // The real module owns the material check the catalog gate reads; keep it faithful so the
   // full-acrylic cases below still exercise the real blocking rules.
   isFullAcrylic: () => state.jawMaterial === 2,
-  isTabBlockedByMaterial: (tabId) =>
-    state.jawMaterial === 2 && ["bars", "rests"].includes(tabId),
 }));
 
 import {
@@ -516,6 +514,35 @@ describe("full acrylic places a major exactly as metal does", () => {
     const before = upperWith(teeth, "major-upper-horseshoe");
     pruneInvalidMajorConnectorPlacementsInJaw(teeth, COMPONENT_BY_ID, "upper");
     expect(upperWith(teeth, "major-upper-horseshoe")).toEqual(before);
+  });
+});
+
+/** Full acrylic refuses metal mesh and the open palatal majors; rests and bars place as on metal. */
+describe("full acrylic material gate", () => {
+  beforeEach(() => {
+    state.jawMaterial = 2;
+  });
+
+  afterEach(() => {
+    state.jawMaterial = null;
+  });
+
+  it.each([
+    ["rest-seat", "mesial"],
+    ["rest-onlay", "mesial"],
+    ["bar-i", "bar_d1_distal"],
+  ])("places %s", (componentId, surface) => {
+    const t = toothAt("36");
+    place(componentId, "36", surface);
+    expect(t.components).toContain(componentId);
+  });
+
+  it("still refuses metal mesh but takes the flange", () => {
+    const t = toothAt("36", [], false);
+    place("mesh-hole", "36");
+    expect(t.components).toEqual([]);
+    place("mesh-flange", "36");
+    expect(t.components).toContain("mesh-flange");
   });
 });
 

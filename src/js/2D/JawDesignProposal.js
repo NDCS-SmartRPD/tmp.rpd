@@ -519,9 +519,9 @@ function posteriorMostSpanOnSide(spans, side) {
 
 /**
  * An acrylic denture retains with plain wire clasps, so the proposal places clasps and
- * nothing else: no rest seats to cut, and no cast bars (the material blocks the BARS tab
- * anyway). Each clasp is a retainer reciprocated by the plate rather than by a second arm,
- * which is what an acrylic case is normally built with.
+ * nothing else: no rest seats to cut, and no cast bars. Each clasp is a retainer
+ * reciprocated by the plate rather than by a second arm, which is what an acrylic case is
+ * normally built with.
  *
  * One clasp per side, on the tooth standing MESIAL to the most posterior space — the space
  * further forward is carried by the base and gets none. Two exceptions: a space of four

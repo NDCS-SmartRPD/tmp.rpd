@@ -312,8 +312,8 @@ function openJawMaterialDialog() {
     gate.remove();
     // Reflect the pick in the corner badge over the jaws.
     updateJawMaterialBadge();
-    // Full acrylic disables mesh/bars + the palatal A-P strap & bar connectors;
-    // re-render so the catalog moves off any now-blocked tab/component.
+    // Full acrylic disables mesh + the palatal A-P strap & bar connectors;
+    // re-render so the catalog moves off any now-blocked component.
     renderComponentCatalog();
     recordHistoryIfChanged(historyBefore);
     setMessage(`Material set to ${label}.`, false);

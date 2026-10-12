@@ -26,7 +26,6 @@ import {
   DEFAULT_COMPONENT_ID,
   getHistoryStateSignature,
   isFullAcrylic,
-  isTabBlockedByMaterial,
   recordHistoryIfChanged,
   setMessage,
   renderJaws,
@@ -63,8 +62,8 @@ import {
 import { toast, attachThemedCalendar } from "../shared/toast.js";
 
 // ── Material restrictions ────────────────────────────────────────────────────
-// Full-acrylic (jawMaterial === 2) carries no metal framework: the BARS tab, metal mesh and
-// the open palatal majors are disabled. Plate, Horseshoe and the flange stay.
+// Full-acrylic (jawMaterial === 2) disables metal mesh and the open palatal majors.
+// Plate, Horseshoe, the flange, rests and bars stay.
 /** Components that stay available in a full-acrylic case despite their tab/family. */
 const ACRYLIC_ALLOWED_COMPONENT_IDS = new Set(["mesh-flange"]);
 
@@ -73,23 +72,15 @@ export function isComponentBlockedByMaterial(componentId) {
   if (ACRYLIC_ALLOWED_COMPONENT_IDS.has(componentId)) return false;
   return (
     isMeshComponent(componentId) ||
-    isBarComponent(componentId) ||
     isPalatalStrapMajorComponent(componentId) ||
     isPalatalHoleMajorComponent(componentId) ||
     isPalatalBarMajorComponent(componentId)
   );
 }
 
-// Never leave the user parked on a tab or component the current material forbids.
+// Never leave the user parked on a component the current material forbids.
 // Called at the top of every catalog render.
 function healSelectionForMaterial() {
-  if (!isFullAcrylic()) return;
-  if (isTabBlockedByMaterial(state.selectedTab)) {
-    const nextTab = COMPONENT_TABS.find(
-      (t) => t.kind !== "form" && !isTabBlockedByMaterial(t.id)
-    );
-    if (nextTab) state.selectedTab = nextTab.id;
-  }
   if (state.selectedComponentId && isComponentBlockedByMaterial(state.selectedComponentId)) {
     state.selectedComponentId = null;
   }
@@ -117,10 +108,6 @@ export function initComponentCatalog() {
       button.dataset.tab = tab.id;
       button.textContent = tab.label;
       button.addEventListener("click", () => {
-        if (isTabBlockedByMaterial(tab.id)) {
-          setMessage(`${tab.label} isn't available for a full acrylic case.`, true);
-          return;
-        }
         state.selectedTab = tab.id;
         state.suppressArchPlacementSuggestions = false;
         if (tab.id === "major") {
@@ -142,10 +129,6 @@ export function renderComponentCatalog() {
   tabs.forEach((tabBtn, index) => {
     const tabId = COMPONENT_TABS[index]?.id;
     tabBtn.classList.toggle("is-active", tabId === state.selectedTab);
-    const blocked = isTabBlockedByMaterial(tabId);
-    tabBtn.classList.toggle("is-disabled", blocked);
-    tabBtn.disabled = blocked;
-    tabBtn.setAttribute("aria-disabled", blocked ? "true" : "false");
   });
 
   const itemsEl = document.getElementById("componentItems");

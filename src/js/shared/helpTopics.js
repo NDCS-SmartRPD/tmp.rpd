@@ -813,7 +813,7 @@ export const HELP_TOPICS = [
       "how do i add an occlusal rest",
     ],
     answer:
-      "Open the RESTS tab and choose Rest Seat or Onlay Rest. A Rest Seat goes on one of the rest marks shown on each tooth — mesial, distal or lingual — and on a front tooth the lingual mark asks which cingulum rest you want. An Onlay Rest has no marks: select a back tooth and it covers the biting surface. Rests are not available for a full acrylic case.",
+      "Open the RESTS tab and choose Rest Seat or Onlay Rest. A Rest Seat goes on one of the rest marks shown on each tooth — mesial, distal or lingual — and on a front tooth the lingual mark asks which cingulum rest you want. An Onlay Rest has no marks: select a back tooth and it covers the biting surface.",
     steps: [
       LOCK_STEP,
       openTab("rests", "Open the RESTS tab in the Components panel."),

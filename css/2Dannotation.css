@@ -2575,15 +2575,6 @@ button.upload3d-row {
   color: #fff;
 }
 
-/* Disabled by material rule (e.g. mesh/bars tabs on a full acrylic case). */
-.component-tab.is-disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  background: #f1f3f5;
-  color: var(--muted);
-  border-color: var(--line);
-}
-
 .case-note-form {
   display: grid;
   gap: 10px;
@@ -3790,9 +3781,8 @@ button.upload3d-row {
   border-bottom-right-radius: 100%;
 }
 
-/* A tab the denture material forbids (e.g. rests/bars in full acrylic) stays in place
-   but dead, matching the component tab strip. */
-.tooth-radial-option.is-disabled,
+/* A component the denture material forbids (e.g. metal mesh in full acrylic) stays in
+   place but dead, matching the catalog. */
 .tooth-quickpick-tile.is-disabled {
   opacity: 0.4;
   cursor: not-allowed;
@@ -3801,7 +3791,6 @@ button.upload3d-row {
   border-color: var(--line);
 }
 
-.tooth-radial-option.is-disabled:hover,
 .tooth-quickpick-tile.is-disabled:hover {
   background: #f1f3f5;
   transform: none;
@@ -4586,7 +4575,7 @@ body.has-ann-footer .annotation-shell { min-height: calc(100vh - 35px); }
   transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease,
     box-shadow 0.16s ease, transform 0.12s ease;
 }
-.component-tab:hover:not(.is-active):not(.is-disabled) {
+.component-tab:hover:not(.is-active) {
   border-color: var(--rose-500);
   background: rgba(59, 174, 149, 0.08);
   color: var(--rose-700);

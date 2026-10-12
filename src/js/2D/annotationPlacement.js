@@ -130,7 +130,7 @@ export function placeSelectedComponentOnTooth(toothId, placementContext = null) 
     return;
   }
 
-  // Full acrylic can't carry mesh, bars, or the palatal A-P strap / palatal bar —
+  // Full acrylic can't carry mesh or the palatal A-P strap / palatal bar —
   // refuse the placement even if a stale selection slips through the catalog gate.
   if (isComponentBlockedByMaterial(selectedComponent.id)) {
     setMessage("This component isn't available for a full acrylic case.", true);
