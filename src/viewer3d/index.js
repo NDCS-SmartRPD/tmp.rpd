@@ -24,6 +24,7 @@ import { createArtificialTeethRenderer } from "./artificialTeeth.js";
 import { API_BASE, MACHINE_ID } from "../js/shared/api.js";
 import { decodeJawStructResponse, decodedJawMaterial } from "../js/2D/jawStructCodec.js";
 import { FULL_ACRYLIC_MATERIAL } from "../js/2D/JawDesignProposal.js";
+import { occlusionColorArray } from "./vertexColors.js";
 
 const LOG_VIEWER_LOAD_TIMINGS_TO_CONSOLE = false;
 const LOG_VIEWER_OBJECT_COUNTS_TO_CONSOLE = false;
@@ -3762,7 +3763,19 @@ function removeViewerLoadingScreen() {
     return buildRuntimeUndercutSurface(jawKey, response);
   }
 
-  async function computeRuntimeOcclusionSurfaces() {
+  async function computeRuntimeOcclusionSurfaces(slotInputs = null) {
+    const slotPayload = slotInputs
+      ? {
+          upper: {
+            stl_data: slotInputs.upper.data,
+            filename: slotInputs.upper.filename,
+          },
+          lower: {
+            stl_data: slotInputs.lower.data,
+            filename: slotInputs.lower.filename,
+          },
+        }
+      : {};
     const response = await apiClient.post(
       "/dll/compute-occlusion",
       [
@@ -3776,6 +3789,7 @@ function removeViewerLoadingScreen() {
           caseIntID: paramValue,
           includeFullOcclusion: true,
           returnOcclusionBase64: true,
+          ...slotPayload,
         },
       ],
       false,
@@ -5391,7 +5405,29 @@ function removeViewerLoadingScreen() {
   // The viewer LANDS on the uploaded slot STLs; the case's own mesh and overlays
   // load hidden behind the 3D button. Both stay in memory, so switching is instant.
   const designSlotMeshes = [];
+  const designSlotPayloads = new Map();
+  let designSlotOcclusionPromise = null;
   let designViewActive = false;
+
+  function invalidateDesignSlotOcclusion() {
+    designSlotOcclusionPromise = null;
+    designSlotMeshes.forEach((mesh) => {
+      const occlusionGeometry = mesh.userData?.occlusionGeometry;
+      if (mesh.userData?.occlusionOn) {
+        const undercutGeometry = mesh.userData.undercutGeometry;
+        const baseGeometry = all_mesh_mat[mesh.name]?.[0];
+        mesh.geometry = undercutGeometry || baseGeometry || mesh.geometry;
+        mesh.material = undercutGeometry
+          ? mesh.userData.undercutMaterial
+          : mesh.userData.slotPlainMaterial || mesh.material;
+        mesh.userData.undercutOn = Boolean(undercutGeometry);
+        mesh.userData.occlusionOn = false;
+      }
+      occlusionGeometry?.dispose?.();
+      mesh.userData.occlusionGeometry = undefined;
+      mesh.userData.occlusionUnavailableReason = null;
+    });
+  }
 
   // Fixed slot layout, mirroring EXTRA_STL_SLOT_NAMES in 2D/preview3D.js:
   // 1 upper jaw, 2 upper framework, 3 lower jaw, 4 lower framework.
@@ -5802,6 +5838,106 @@ function removeViewerLoadingScreen() {
     );
   }
 
+  function designSlotHeatmapMode(slot) {
+    const mesh = designSlotMeshes.find((entry) => entry.userData?.designSlot === slot);
+    if (mesh?.userData?.occlusionOn) return "occlusion";
+    if (mesh?.userData?.undercutOn) return "undercut";
+    return "normal";
+  }
+
+  function buildSlotOcclusionGeometry(slotMesh, surface) {
+    const base = all_mesh_mat[slotMesh.name]?.[0];
+    const rgbaBytes = surface?.occlusion_values?.data;
+    const vertexCount = base?.attributes?.position?.count || 0;
+    const heatmapCount = rgbaBytes?.length ? rgbaBytes.length / 16 : 0;
+    if (!base || !vertexCount || heatmapCount !== vertexCount) {
+      slotMesh.userData.occlusionUnavailableReason =
+        "The occlusion result does not match this uploaded jaw.";
+      slotMesh.userData.occlusionGeometry = null;
+      return null;
+    }
+
+    const geometry = base.clone();
+    geometry.setAttribute(
+      "color",
+      new THREE.BufferAttribute(occlusionColorArray(vertexCount, rgbaBytes), 3)
+    );
+    slotMesh.userData.occlusionUnavailableReason = null;
+    slotMesh.userData.occlusionGeometry = geometry;
+    return geometry;
+  }
+
+  function prepareDesignSlotOcclusion() {
+    if (designSlotOcclusionPromise) return designSlotOcclusionPromise;
+    const upperMesh = designSlotMeshes.find((mesh) => mesh.userData?.designSlot === 1);
+    const lowerMesh = designSlotMeshes.find((mesh) => mesh.userData?.designSlot === 3);
+    const upperInput = designSlotPayloads.get(1);
+    const lowerInput = designSlotPayloads.get(3);
+    if (!upperMesh || !lowerMesh || !upperInput || !lowerInput) return Promise.resolve(null);
+
+    designSlotOcclusionPromise = Promise.all([
+      upperMesh.userData.undercutSurveyPromise,
+      lowerMesh.userData.undercutSurveyPromise,
+    ])
+      .then(() => computeRuntimeOcclusionSurfaces({ upper: upperInput, lower: lowerInput }))
+      .then((surfaces) => {
+        if (!designSlotMeshes.includes(upperMesh) || !designSlotMeshes.includes(lowerMesh)) {
+          return null;
+        }
+        buildSlotOcclusionGeometry(upperMesh, surfaces.upper);
+        buildSlotOcclusionGeometry(lowerMesh, surfaces.lower);
+        return surfaces;
+      })
+      .catch((error) => {
+        console.warn("[viewer3D] design-slot occlusion preload failed", error);
+        [upperMesh, lowerMesh].forEach((mesh) => {
+          mesh.userData.occlusionUnavailableReason =
+            error?.message || "Occlusion data could not be prepared for this jaw.";
+        });
+        return null;
+      });
+    return designSlotOcclusionPromise;
+  }
+
+  async function setDesignSlotOcclusion(slot, enabled) {
+    const mesh = designSlotMeshes.find((entry) => entry.userData?.designSlot === slot);
+    if (!mesh) return false;
+    if (!enabled) return setDesignSlotUndercut(slot, false);
+
+    if (!mesh.userData.occlusionGeometry) {
+      mesh.userData.occlusionUnavailableReason = null;
+      await prepareDesignSlotOcclusion();
+    }
+
+    const geometry = mesh.userData.occlusionGeometry;
+    if (!geometry) {
+      mesh.userData.occlusionOn = false;
+      mesh.userData.occlusionUnavailableReason =
+        mesh.userData.occlusionUnavailableReason ||
+        "Upload both the upper and lower jaw before viewing occlusion.";
+      return false;
+    }
+
+    mesh.userData.slotPlainMaterial = mesh.userData.slotPlainMaterial || mesh.material;
+    mesh.userData.occlusionMaterial =
+      mesh.userData.occlusionMaterial ||
+      new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        metalness: 0,
+        roughness: 0.5,
+        side: THREE.DoubleSide,
+        transparent: false,
+        opacity: 1,
+        depthTest: true,
+        depthWrite: true,
+      });
+    mesh.geometry = geometry;
+    mesh.material = mesh.userData.occlusionMaterial;
+    mesh.userData.undercutOn = false;
+    mesh.userData.occlusionOn = true;
+    return true;
+  }
+
   // The survey itself already ran when this slot's mesh landed
   // (ensureSlotUndercutGeometry) — this only ever toggles between the two
   // geometry variants that are already sitting in mesh.userData, so pressing
@@ -5817,6 +5953,7 @@ function removeViewerLoadingScreen() {
       if (base) mesh.geometry = base;
       if (mesh.userData.slotPlainMaterial) mesh.material = mesh.userData.slotPlainMaterial;
       mesh.userData.undercutOn = false;
+      mesh.userData.occlusionOn = false;
       return false;
     }
 
@@ -5856,6 +5993,7 @@ function removeViewerLoadingScreen() {
     mesh.geometry = geometry;
     mesh.material = mesh.userData.undercutMaterial;
     mesh.userData.undercutOn = true;
+    mesh.userData.occlusionOn = false;
     return true;
   }
 
@@ -5875,7 +6013,10 @@ function removeViewerLoadingScreen() {
         if (!geometry || currentMesh !== mesh) return;
 
         const applied = await setDesignSlotUndercut(slot, true);
-        if (applied && designViewActive) rebuildObjectsPanel();
+        if (applied) {
+          prepareDesignSlotOcclusion();
+          if (designViewActive) rebuildObjectsPanel();
+        }
       })
       .catch((error) => {
         console.warn(`[viewer3D] slot ${slot}: default undercut view failed`, error);
@@ -5903,13 +6044,19 @@ function removeViewerLoadingScreen() {
       // different mesh with no undercut data. Jaw slots switch to undercut mode
       // automatically as soon as their eager survey completes.
       supportsUndercut: !FRAMEWORK_SLOTS.has(slot),
+      supportsOcclusion: !FRAMEWORK_SLOTS.has(slot),
+      getMode: () => designSlotHeatmapMode(slot),
       getUndercut: () => isDesignSlotUndercutOn(slot),
       setUndercut: (enabled) => setDesignSlotUndercut(slot, enabled),
+      setOcclusion: (enabled) => setDesignSlotOcclusion(slot, enabled),
       // Why the toggle didn't turn on, when it didn't — set by
       // ensureSlotUndercutGeometry/buildSlotUndercutGeometry above.
       getUndercutUnavailableReason: () =>
         designSlotMeshes.find((m) => m.userData?.designSlot === slot)?.userData
           ?.undercutUnavailableReason ?? null,
+      getOcclusionUnavailableReason: () =>
+        designSlotMeshes.find((m) => m.userData?.designSlot === slot)?.userData
+          ?.occlusionUnavailableReason ?? null,
     }));
   }
 
@@ -6080,6 +6227,10 @@ function removeViewerLoadingScreen() {
       // Parsing blocks the main thread, so let the tile paint "Preparing…" first.
       await new Promise((resolve) => requestAnimationFrame(resolve));
       const mesh = addDesignSlotMesh(slot, file.name, atob(base64));
+      if (!FRAMEWORK_SLOTS.has(slot)) {
+        designSlotPayloads.set(slot, { data: base64, filename: file.name });
+        invalidateDesignSlotOcclusion();
+      }
       // Same as the initial load: survey rides with the mesh, not the button.
       const surveyPromise = ensureSlotUndercutGeometry(slot, base64);
       enableDefaultSlotUndercut(slot, mesh, surveyPromise);
@@ -6317,6 +6468,10 @@ function removeViewerLoadingScreen() {
         disposeDesignSlotMesh(designSlotMeshes[index]);
         designSlotMeshes.splice(index, 1);
       }
+      if (!FRAMEWORK_SLOTS.has(slot)) {
+        designSlotPayloads.delete(slot);
+        invalidateDesignSlotOcclusion();
+      }
       rebuildObjectsPanel();
       if (statusEl) statusEl.textContent = `${filename} deleted.`;
     } catch (error) {
@@ -6524,6 +6679,8 @@ function removeViewerLoadingScreen() {
     // Drop any previous slot meshes so a re-load can't stack copies.
     designSlotMeshes.splice(0).forEach(disposeDesignSlotMesh);
     hiddenDesignMeshes.splice(0);
+    designSlotPayloads.clear();
+    designSlotOcclusionPromise = null;
 
     // Remove previous GUI controls if any
     const oldGui = document.querySelector(".dg.ac");
@@ -6601,6 +6758,12 @@ function removeViewerLoadingScreen() {
 
           await materialReady;
           const mesh = addDesignSlotMesh(slot, slotItem.filename, atob(slotItem.data));
+          if (!FRAMEWORK_SLOTS.has(slot)) {
+            designSlotPayloads.set(slot, {
+              data: slotItem.data,
+              filename: slotItem.filename || `slot-${slot}.stl`,
+            });
+          }
           // Fire the undercut survey now, alongside the mesh — not gated behind
           // the undercut button (see ensureSlotUndercutGeometry).
           const surveyPromise = ensureSlotUndercutGeometry(slot, slotItem.data);

@@ -605,14 +605,19 @@ style.textContent = `
   }
 
   /* #viewer-right-nav becomes a full-width bottom bar at both breakpoints
-     below, so the legend must clear its height rather than sit at bottom:0. */
+     below, so transient overlays must clear it rather than sit at bottom:0. */
   @media (min-width: 769px) and (max-width: 1024px) {
-    .viewer-undercut-legend {
+    .viewer-undercut-legend,
+    .component-panel-note {
       bottom: calc(86px + env(safe-area-inset-bottom, 0px));
     }
   }
 
   @media (max-width: 768px) {
+    .component-panel-note {
+      bottom: calc(86px + env(safe-area-inset-bottom, 0px));
+    }
+
     .viewer-undercut-legend {
       left: 12px;
       bottom: calc(86px + env(safe-area-inset-bottom, 0px));
@@ -1051,8 +1056,8 @@ function createComponentPanel(groups) {
 
     let undercutButton = null;
     let occlusionButton = null;
-    // Slot rows offer undercut only (borrowed from the case jaw); the case's own jaws
-    // offer both analyses.
+    // Jaw rows and uploaded jaw slots offer both analyses. Framework slots have
+    // neither because they are not jaw scans.
     if (group.supportsAnalysis || group.supportsUndercut) {
       undercutButton = document.createElement("button");
       undercutButton.type = "button";
@@ -1093,7 +1098,33 @@ function createComponentPanel(groups) {
       occlusionButton.style.backgroundImage = `url(${basePath}/assets/Occlusion.png)`;
       occlusionButton.title = `${group.label} occlusion`;
       occlusionButton.addEventListener("click", () => {
-        group.setMode?.(group.getMode?.() === "occlusion" ? "normal" : "occlusion");
+        const next = group.getMode?.() === "occlusion" ? "normal" : "occlusion";
+        const result = group.setMode?.(next);
+        if (result && typeof result.then === "function") {
+          if (next === "occlusion") {
+            componentNote?.show("Processing occlusion heatmap…", 0);
+          }
+          occlusionButton.disabled = true;
+          occlusionButton.classList.add("is-busy");
+          result
+            .then((appliedMode) => {
+              if (next === "occlusion" && appliedMode !== "occlusion") {
+                const reason = group.getOcclusionUnavailableReason?.();
+                componentNote?.show(reason || `Couldn't turn on occlusion for ${group.label}.`);
+              } else if (next === "occlusion") {
+                componentNote?.hide();
+              }
+            })
+            .catch((error) => {
+              console.warn("Occlusion switch failed:", error);
+              componentNote?.show(error?.message || `Couldn't turn on occlusion for ${group.label}.`);
+            })
+            .finally(() => {
+              occlusionButton.disabled = false;
+              occlusionButton.classList.remove("is-busy");
+              syncAllRows();
+            });
+        }
         syncAllRows();
       });
     }
@@ -1341,11 +1372,18 @@ function createComponentNote(panelHost) {
 
   let hideTimer = null;
   return {
-    show(message) {
+    show(message, duration = 4500) {
       note.textContent = message;
       note.classList.add("visible");
       clearTimeout(hideTimer);
-      hideTimer = setTimeout(() => note.classList.remove("visible"), 4500);
+      hideTimer = duration > 0
+        ? setTimeout(() => note.classList.remove("visible"), duration)
+        : null;
+    },
+    hide() {
+      clearTimeout(hideTimer);
+      hideTimer = null;
+      note.classList.remove("visible");
     },
   };
 }
@@ -1404,21 +1442,25 @@ function buildDesignSlotGroups(designSlots) {
       type: "overlay",
       iconPath: entry.iconPath,
       meshes,
-      supportsAnalysis: false, // uploads carry no occlusion data of their own
+      supportsAnalysis: Boolean(entry.supportsOcclusion) && meshes.length > 0,
       // Read the mode off the mesh, never cached: the panel is rebuilt on every view
       // switch, and a cached mode comes back "normal" over a heatmapped slot.
       supportsUndercut: Boolean(entry.supportsUndercut) && meshes.length > 0,
-      getMode: () => (entry.getUndercut?.() ? "undercut" : "normal"),
+      getMode: () => entry.getMode?.() || (entry.getUndercut?.() ? "undercut" : "normal"),
       // Async: the first switch pulls in the case's scan and heatmaps. Resolves to the mode
       // actually applied, so a slot that can't be matched to the jaw stays plain.
       setMode: async (mode) => {
-        if (mode === "occlusion") return "normal";
+        if (mode === "occlusion") {
+          const applied = await entry.setOcclusion?.(true);
+          return applied ? "occlusion" : "normal";
+        }
         const applied = await entry.setUndercut?.(mode === "undercut");
         return applied ? "undercut" : "normal";
       },
       // Why the undercut toggle didn't turn on, when it didn't — shown by the
       // undercut button's click handler below.
       getUndercutUnavailableReason: () => entry.getUndercutUnavailableReason?.() ?? null,
+      getOcclusionUnavailableReason: () => entry.getOcclusionUnavailableReason?.() ?? null,
       hasContent: () => meshes.length > 0,
       getVisible: () => areAnyVisible(meshes),
       setVisible: (isVisible) => setMeshGroupVisible(meshes, isVisible),
