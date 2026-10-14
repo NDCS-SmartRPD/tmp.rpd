@@ -1,5 +1,4 @@
-// Case KPIs (src/pages/case_kpis.html) — KpiTable.tsx from the "Create User
-// Profile Dashboard" prototype. The numbers come from shared/kpiMetrics.js;
+// Case KPIs (src/pages/case_kpis.html) — The numbers come from shared/kpiMetrics.js;
 // this file renders them. The prototype's admin view needs an organisation-wide
 // case list, so only the personal ("My view") metrics are shown.
 

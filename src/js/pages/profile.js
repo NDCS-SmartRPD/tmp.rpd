@@ -1,4 +1,3 @@
-// View Profile (src/pages/profile.html) — MyProfile.tsx from the "Create User
 // Profile Dashboard" prototype, filled with what the app actually has: the
 // session (username, email, account type, uuid), the device's time zone, the case list,
 // collaborators and notifications.

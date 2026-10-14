@@ -1,5 +1,4 @@
-// My Dashboard (src/pages/my_dashboard.html) — App.tsx from the "Create User
-// Profile Dashboard" prototype, computed from the signed-in user's case list.
+// My Dashboard (src/pages/my_dashboard.html), computed from the signed-in user's case list.
 // Uploaded scans, third-party files and per-slot counts have no endpoint yet
 // and stay "—" in the markup.
 

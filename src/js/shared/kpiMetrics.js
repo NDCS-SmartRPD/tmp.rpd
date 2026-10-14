@@ -1,5 +1,4 @@
-// Case KPIs for src/pages/case_kpis.html (KpiTable.tsx in the "Create User
-// Profile Dashboard" prototype), computed from the signed-in user's case list.
+// Case KPIs for src/pages/case_kpis.html, computed from the signed-in user's case list.
 // Pure: no DOM, no fetches.
 //
 // The server keeps no status history, so only the date-based metrics (all
