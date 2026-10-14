@@ -40,6 +40,9 @@ export const PAGE_LABELS = {
   admin_users: "User Management",
   admin_machineid: "Machine IDs",
   admin_case_list: "Admin Case List",
+  profile: "Profile",
+  my_dashboard: "My Dashboard",
+  case_kpis: "Case KPIs",
 };
 
 // Page ids → path relative to the repo root, used to build deep links at the
@@ -54,6 +57,9 @@ export const PAGE_PATHS = {
   admin_users: "src/pages/admin/admin_users.html",
   admin_machineid: "src/pages/admin/admin_machineid.html",
   admin_case_list: "src/pages/admin/admin_case_list.html",
+  profile: "src/pages/profile.html",
+  my_dashboard: "src/pages/my_dashboard.html",
+  case_kpis: "src/pages/case_kpis.html",
 };
 
 // The case-actions dropdown is closed by default, so steps about its items

@@ -4,6 +4,7 @@
 
 import { getLoggedInUser } from "./api.js";
 import { statusLabel } from "./apiLog.js";
+import { setupAppSidebar } from "./appSidebar.js";
 import { toast } from "./toast.js";
 import { timestampToMs, toDayMidnight } from "./timestamps.js";
 import { DESIGN_STATE_LABELS, caseOwner, designState, isOwnedBy, stageOf } from "./caseStats.js";
@@ -14,7 +15,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 // Stage colors are the case list's stat-card accents (.cm-stat-filter-*),
-// validated together as a categorical set for the donut.
+// validated together as a categorical set; used by the profile's stage meters
+// and activity dots.
 export const STAGES = [
   { key: "preparation", label: "Preparation", color: "#d97706" },
   { key: "delivery", label: "Production", color: "#2563eb" },
@@ -100,8 +102,10 @@ export function setText(id, text) {
   if (el) el.textContent = text;
 }
 
-// Top bar avatar initials, "Last updated", and every "Change password" button.
+// Top bar menu (the app sidebar) and avatar initials, and every "Change
+// password" button.
 export function setupPageChrome(user) {
+  setupAppSidebar({ triggerId: "appbarMenuBtn" });
   setText("appbarAvatar", userInitials(user));
   document.querySelectorAll("[data-change-password]").forEach((btn) =>
     btn.addEventListener("click", async () => {

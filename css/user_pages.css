@@ -52,7 +52,22 @@
   border-bottom: 1px solid var(--up-border);
   font-size: 14px;
 }
-.up-brand { font-weight: 800; color: var(--up-accent); letter-spacing: -0.025em; text-decoration: none; }
+/* Opens the app sidebar, like the footer ☰ on the other pages. */
+.up-menu-btn {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  margin-left: -8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--up-accent);
+  font-size: 18px;
+  cursor: pointer;
+}
+.up-menu-btn:hover { background: var(--up-accent-soft); }
 .up-nav { display: flex; gap: 4px; align-self: stretch; }
 .up-nav a {
   display: flex;
@@ -300,7 +315,8 @@
 /* Third-party slots */
 .up-slots { display: flex; flex-direction: column; gap: 12px; font-size: 12px; }
 .up-slot-head { display: flex; justify-content: space-between; margin-bottom: 4px; }
-.up-slot-head b { color: var(--up-faint); }
+.up-slot-head b { color: var(--up-ink-3); font-variant-numeric: tabular-nums; }
+.up-slots .up-bar > div { background: var(--up-accent-bright); }
 
 /* Tables */
 .up-table-wrap { overflow-x: auto; }

@@ -212,6 +212,9 @@ describe("currentPageId()", () => {
     ["/src/pages/ThreeDViewer.html", "viewer_3d"],
     ["/src/pages/admin/admin_users.html", "admin_users"],
     ["/src/pages/admin/admin_case_list.html", "admin_case_list"],
+    ["/src/pages/profile.html", "profile"],
+    ["/src/pages/my_dashboard.html", "my_dashboard"],
+    ["/src/pages/case_kpis.html", "case_kpis"],
     ["/index.html", "login"],
   ])("%s → %s", (path, expected) => {
     expect(tour.currentPageId(path)).toBe(expected);

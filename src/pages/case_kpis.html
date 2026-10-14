@@ -10,11 +10,14 @@
     <link rel="stylesheet" href="../../vendor/font-awesome/css/all.min.css" />
     <link rel="stylesheet" href="../../css/toast.css" />
     <link rel="stylesheet" href="../../css/user_pages.css" />
+    <link rel="stylesheet" href="../../css/app-shell.css" />
   </head>
   <body class="up-body">
 
     <header class="up-appbar">
-      <a class="up-brand" href="./case_list.html">SmartRPD</a>
+      <button type="button" class="up-menu-btn" id="appbarMenuBtn" aria-label="Menu" title="Menu">
+        <i class="fa fa-bars" aria-hidden="true"></i>
+      </button>
       <nav class="up-nav" aria-label="Pages">
         <a href="./case_list.html">Cases</a>
         <a href="./profile.html">Profile</a>
@@ -65,6 +68,76 @@
         <p class="up-kpi-foot" id="kpiFoot"></p>
       </section>
     </main>
+
+    <aside id="appSidebar" class="app-sidebar is-hidden" aria-hidden="true" aria-label="Navigation">
+      <div class="app-sidebar-backdrop" data-sidebar-close></div>
+      <nav class="app-sidebar-panel" role="navigation">
+        <header class="app-sidebar-header">
+          <img class="app-sidebar-brand-logo" src="../../assets/profile.png" alt="" />
+          <span class="app-sidebar-title">SMARTRPD</span>
+          <span class="app-sidebar-version">v2.0</span>
+        </header>
+        <ul id="appSidebarList" class="app-sidebar-list">
+          <!-- Admin-only (unhidden by appSidebar.js when loggedInUser.isAdmin === 1;
+               the server re-checks is_admin on every admin endpoint anyway). -->
+          <li id="sidebarAdminUsersItem" hidden>
+            <button type="button" id="sidebarAdminUsersBtn" class="app-sidebar-item">
+              <i class="fa fa-users-gear app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>User Management</span>
+            </button>
+          </li>
+          <li id="sidebarMachineIdItem" hidden>
+            <button type="button" id="sidebarMachineIdBtn" class="app-sidebar-item">
+              <i class="fa fa-desktop app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Machine ID Management</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarChangePasswordBtn" class="app-sidebar-item">
+              <i class="fa fa-key app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Change Account Password</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarLogoutBtn" class="app-sidebar-item">
+              <i class="fa fa-right-from-bracket app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Logout</span>
+            </button>
+          </li>
+          <li><hr class="app-sidebar-separator" /></li>
+          <li>
+            <button type="button" id="sidebarHelpBtn" class="app-sidebar-item">
+              <i class="fa fa-circle-info app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Help</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarReportIssueBtn" class="app-sidebar-item">
+              <i class="fa fa-bug app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Report Issue</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarFeedbackBtn" class="app-sidebar-item">
+              <i class="fa fa-comment-dots app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Feedback</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarAboutBtn" class="app-sidebar-item">
+              <i class="fa-regular fa-square-caret-right app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>About</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarLanguageBtn" class="app-sidebar-item" aria-label="Language: English">
+              <i class="fa fa-globe app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>English</span>
+            </button>
+          </li>
+        </ul>
+      </nav>
+    </aside>
 
     <script type="module" src="../js/pages/caseKpis.js"></script>
   </body>

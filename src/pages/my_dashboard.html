@@ -10,11 +10,14 @@
     <link rel="stylesheet" href="../../vendor/font-awesome/css/all.min.css" />
     <link rel="stylesheet" href="../../css/toast.css" />
     <link rel="stylesheet" href="../../css/user_pages.css" />
+    <link rel="stylesheet" href="../../css/app-shell.css" />
   </head>
   <body class="up-body">
 
     <header class="up-appbar">
-      <a class="up-brand" href="./case_list.html">SmartRPD</a>
+      <button type="button" class="up-menu-btn" id="appbarMenuBtn" aria-label="Menu" title="Menu">
+        <i class="fa fa-bars" aria-hidden="true"></i>
+      </button>
       <nav class="up-nav" aria-label="Pages">
         <a href="./case_list.html">Cases</a>
         <a href="./profile.html">Profile</a>
@@ -40,9 +43,9 @@
               <span>Period</span>
               <select id="dbPeriod">
                 <option value="7">Last 7 days</option>
-                <option value="30" selected>Last 30 days</option>
+                <option value="30">Last 30 days</option>
                 <option value="90">Last 90 days</option>
-                <option value="all">All time</option>
+                <option value="all" selected>All time</option>
               </select>
             </label>
             <label class="up-filter">
@@ -60,8 +63,8 @@
       <div class="up-kpis">
         <section class="up-card up-kpi">
           <p class="up-kpi-label">Uploaded scans</p>
-          <p class="up-kpi-value">—</p>
-          <p class="up-kpi-delta"><span class="up-faint">Needs a server total</span></p>
+          <p class="up-kpi-value" id="dbScans">…</p>
+          <p class="up-kpi-delta" id="dbScansDelta"></p>
         </section>
         <section class="up-card up-kpi">
           <p class="up-kpi-label">2D designs</p>
@@ -75,8 +78,8 @@
         </section>
         <section class="up-card up-kpi">
           <p class="up-kpi-label">Third-party 3D files</p>
-          <p class="up-kpi-value">—</p>
-          <p class="up-kpi-delta"><span class="up-faint">Needs a server total</span></p>
+          <p class="up-kpi-value" id="dbThird">…</p>
+          <p class="up-kpi-delta" id="dbThirdDelta"></p>
         </section>
       </div>
 
@@ -96,28 +99,22 @@
           </details>
         </section>
 
-        <section class="up-card" aria-labelledby="dbStageTitle">
-          <div class="up-card-head"><h2 id="dbStageTitle">Cases by stage</h2></div>
-          <div class="up-donut" id="dbStageDonut"></div>
-          <p class="up-note" id="dbStageNote"></p>
+        <section class="up-card" aria-labelledby="db2dDesignTitle">
+          <div class="up-card-head"><h2 id="db2dDesignTitle">2D designs by status</h2></div>
+          <div class="up-donut" id="db2dDesignDonut"></div>
         </section>
 
-        <section class="up-card" aria-labelledby="dbDesignTitle">
-          <div class="up-card-head"><h2 id="dbDesignTitle">2D designs by status</h2></div>
-          <div class="up-donut" id="dbDesignDonut"></div>
+        <section class="up-card" aria-labelledby="db3dDesignTitle">
+          <div class="up-card-head"><h2 id="db3dDesignTitle">3D designs by status</h2></div>
+          <div class="up-donut" id="db3dDesignDonut"></div>
         </section>
       </div>
 
       <div class="up-row-3">
         <section class="up-card" aria-labelledby="dbSlotsTitle">
           <div class="up-card-head"><h2 id="dbSlotsTitle">Third-party files by STL slot</h2></div>
-          <ul class="up-slots">
-            <li><div class="up-slot-head"><span>STL slot 1 · Upper jaw</span><b>—</b></div><div class="up-bar"></div></li>
-            <li><div class="up-slot-head"><span>STL slot 2 · Upper framework</span><b>—</b></div><div class="up-bar"></div></li>
-            <li><div class="up-slot-head"><span>STL slot 3 · Lower jaw</span><b>—</b></div><div class="up-bar"></div></li>
-            <li><div class="up-slot-head"><span>STL slot 4 · Lower framework</span><b>—</b></div><div class="up-bar"></div></li>
-          </ul>
-          <p class="up-note">Per-slot counts appear once the server reports them.</p>
+          <ul class="up-slots" id="dbSlots"></ul>
+          <p class="up-note" id="dbSlotsNote"></p>
         </section>
 
         <section class="up-card up-span-2" aria-labelledby="dbRecentTitle">
@@ -136,6 +133,76 @@
         </section>
       </div>
     </main>
+
+    <aside id="appSidebar" class="app-sidebar is-hidden" aria-hidden="true" aria-label="Navigation">
+      <div class="app-sidebar-backdrop" data-sidebar-close></div>
+      <nav class="app-sidebar-panel" role="navigation">
+        <header class="app-sidebar-header">
+          <img class="app-sidebar-brand-logo" src="../../assets/profile.png" alt="" />
+          <span class="app-sidebar-title">SMARTRPD</span>
+          <span class="app-sidebar-version">v2.0</span>
+        </header>
+        <ul id="appSidebarList" class="app-sidebar-list">
+          <!-- Admin-only (unhidden by appSidebar.js when loggedInUser.isAdmin === 1;
+               the server re-checks is_admin on every admin endpoint anyway). -->
+          <li id="sidebarAdminUsersItem" hidden>
+            <button type="button" id="sidebarAdminUsersBtn" class="app-sidebar-item">
+              <i class="fa fa-users-gear app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>User Management</span>
+            </button>
+          </li>
+          <li id="sidebarMachineIdItem" hidden>
+            <button type="button" id="sidebarMachineIdBtn" class="app-sidebar-item">
+              <i class="fa fa-desktop app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Machine ID Management</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarChangePasswordBtn" class="app-sidebar-item">
+              <i class="fa fa-key app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Change Account Password</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarLogoutBtn" class="app-sidebar-item">
+              <i class="fa fa-right-from-bracket app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Logout</span>
+            </button>
+          </li>
+          <li><hr class="app-sidebar-separator" /></li>
+          <li>
+            <button type="button" id="sidebarHelpBtn" class="app-sidebar-item">
+              <i class="fa fa-circle-info app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Help</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarReportIssueBtn" class="app-sidebar-item">
+              <i class="fa fa-bug app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Report Issue</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarFeedbackBtn" class="app-sidebar-item">
+              <i class="fa fa-comment-dots app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Feedback</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarAboutBtn" class="app-sidebar-item">
+              <i class="fa-regular fa-square-caret-right app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>About</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarLanguageBtn" class="app-sidebar-item" aria-label="Language: English">
+              <i class="fa fa-globe app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>English</span>
+            </button>
+          </li>
+        </ul>
+      </nav>
+    </aside>
 
     <script type="module" src="../js/pages/myDashboard.js"></script>
   </body>
