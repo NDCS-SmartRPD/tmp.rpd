@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>My Dashboard</title>
+    <link rel="icon" href="../../assets/profile.png" type="image/png" />
+    <link rel="stylesheet" href="../../vendor/manrope/manrope.css" />
+    <link rel="stylesheet" href="../../css/tokens.css" />
+    <link rel="stylesheet" href="../../vendor/font-awesome/css/all.min.css" />
+    <link rel="stylesheet" href="../../css/toast.css" />
+    <link rel="stylesheet" href="../../css/user_pages.css" />
+  </head>
+  <body class="up-body">
+    <!-- Layout of App.tsx in "Create User Profile Dashboard" (Figma Make), filled
+         by src/js/pages/myDashboard.js from the signed-in user's case list.
+         Scans, third-party files and per-slot counts have no endpoint yet (—). -->
+    <header class="up-appbar">
+      <a class="up-brand" href="./case_list.html">SmartRPD</a>
+      <nav class="up-nav" aria-label="Pages">
+        <a href="./case_list.html">Cases</a>
+        <a href="./profile.html">Profile</a>
+        <a href="./my_dashboard.html" aria-current="page">Dashboard</a>
+        <a href="./case_kpis.html">KPIs</a>
+      </nav>
+      <span class="up-updated">Last updated <b id="lastUpdated">—</b></span>
+      <a class="up-appbar-avatar" id="appbarAvatar" href="./profile.html" title="View my profile" aria-label="View my profile">?</a>
+    </header>
+
+    <main class="up-main">
+      <section class="up-card" aria-labelledby="dbName">
+        <div class="up-summary">
+          <div class="up-summary-avatar"><span class="up-initials-lg" id="dbInitials" aria-hidden="true">?</span></div>
+          <div>
+            <h1 id="dbName">—</h1>
+            <p id="dbRole"></p>
+            <a class="up-summary-link" href="./profile.html">View my profile ›</a>
+          </div>
+          <!-- One filter row scopes every card below. -->
+          <div class="up-filters">
+            <label class="up-filter">
+              <span>Period</span>
+              <select id="dbPeriod">
+                <option value="7">Last 7 days</option>
+                <option value="30" selected>Last 30 days</option>
+                <option value="90">Last 90 days</option>
+                <option value="all">All time</option>
+              </select>
+            </label>
+            <label class="up-filter">
+              <span>Cases</span>
+              <select id="dbScope">
+                <option value="all" selected>All</option>
+                <option value="owned">Owned by me</option>
+                <option value="shared">Shared with me</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <div class="up-kpis">
+        <section class="up-card up-kpi">
+          <p class="up-kpi-label">Uploaded scans</p>
+          <p class="up-kpi-value">—</p>
+          <p class="up-kpi-delta"><span class="up-faint">Needs a server total</span></p>
+        </section>
+        <section class="up-card up-kpi">
+          <p class="up-kpi-label">2D designs</p>
+          <p class="up-kpi-value" id="db2d">…</p>
+          <p class="up-kpi-delta" id="db2dDelta"></p>
+        </section>
+        <section class="up-card up-kpi">
+          <p class="up-kpi-label">SmartRPD 3D files</p>
+          <p class="up-kpi-value" id="db3d">…</p>
+          <p class="up-kpi-delta" id="db3dDelta"></p>
+        </section>
+        <section class="up-card up-kpi">
+          <p class="up-kpi-label">Third-party 3D files</p>
+          <p class="up-kpi-value">—</p>
+          <p class="up-kpi-delta"><span class="up-faint">Needs a server total</span></p>
+        </section>
+      </div>
+
+      <div class="up-row-3">
+        <section class="up-card" aria-labelledby="dbCreatedTitle">
+          <div class="up-card-head">
+            <h2 id="dbCreatedTitle">Cases created</h2>
+            <span class="up-card-meta" id="dbCreatedSub">Per day</span>
+          </div>
+          <div class="up-chart" id="dbCreatedChart"></div>
+          <details class="up-tableview">
+            <summary>Show as table</summary>
+            <table class="up-table">
+              <thead><tr><th scope="col" id="dbCreatedUnit">Day</th><th scope="col" class="up-num">Cases</th></tr></thead>
+              <tbody id="dbCreatedTable"></tbody>
+            </table>
+          </details>
+        </section>
+
+        <section class="up-card" aria-labelledby="dbStageTitle">
+          <div class="up-card-head"><h2 id="dbStageTitle">Cases by stage</h2></div>
+          <div class="up-donut" id="dbStageDonut"></div>
+          <p class="up-note" id="dbStageNote"></p>
+        </section>
+
+        <section class="up-card" aria-labelledby="dbDesignTitle">
+          <div class="up-card-head"><h2 id="dbDesignTitle">2D designs by status</h2></div>
+          <div class="up-donut" id="dbDesignDonut"></div>
+        </section>
+      </div>
+
+      <div class="up-row-3">
+        <section class="up-card" aria-labelledby="dbSlotsTitle">
+          <div class="up-card-head"><h2 id="dbSlotsTitle">Third-party files by STL slot</h2></div>
+          <ul class="up-slots">
+            <li><div class="up-slot-head"><span>STL slot 1 · Upper jaw</span><b>—</b></div><div class="up-bar"></div></li>
+            <li><div class="up-slot-head"><span>STL slot 2 · Upper framework</span><b>—</b></div><div class="up-bar"></div></li>
+            <li><div class="up-slot-head"><span>STL slot 3 · Lower jaw</span><b>—</b></div><div class="up-bar"></div></li>
+            <li><div class="up-slot-head"><span>STL slot 4 · Lower framework</span><b>—</b></div><div class="up-bar"></div></li>
+          </ul>
+          <p class="up-note">Per-slot counts appear once the server reports them.</p>
+        </section>
+
+        <section class="up-card up-span-2" aria-labelledby="dbRecentTitle">
+          <div class="up-card-head">
+            <h2 id="dbRecentTitle">Recent cases</h2>
+            <a class="up-card-action" href="./case_list.html">View all</a>
+          </div>
+          <div class="up-table-wrap">
+            <table class="up-table">
+              <thead>
+                <tr><th scope="col">Case</th><th scope="col">Owner</th><th scope="col">Created</th><th scope="col">2D design</th><th scope="col">3D design</th></tr>
+              </thead>
+              <tbody id="dbRecentCases"><tr><td colspan="5" class="up-empty">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <script type="module" src="../js/pages/myDashboard.js"></script>
+  </body>
+</html>
