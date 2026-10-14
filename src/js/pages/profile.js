@@ -2,6 +2,7 @@
 // session (username, email, account type, uuid), the device's time zone, the case list,
 // collaborators and notifications.
 
+import { loadCaseFiles } from "../shared/caseFiles.js";
 import { caseStats } from "../shared/caseStats.js";
 import { fetchMyAlerts, loadMyCases } from "../shared/myCases.js";
 import { toast } from "../shared/toast.js";
@@ -85,9 +86,12 @@ function renderCases(user, collaborators, cases, { stale, pending }) {
     "pfSummary",
     [roleLabel(user), user.email, plural(stats.total, "case"), plural(collaborators, "collaborator")].filter(Boolean).join(" · ")
   );
-  // Status-based counts are only final once every case has its details.
-  setText("pf2dDesigns", pending ? "…" : String(stats.designs2d));
-  setText("pf3dDesigns", pending ? "…" : String(stats.designs3d));
+  // File counts are final once every case's files have been checked.
+  const filesPending = stats.filesPending > 0;
+  setText("pfScans", filesPending ? "…" : String(stats.scans));
+  setText("pf2dDesigns", filesPending ? "…" : String(stats.designFiles));
+  setText("pfSmartRpd3d", filesPending ? "…" : String(stats.jawStls));
+  setText("pfThirdParty", filesPending ? "…" : String(stats.extraStls));
   setText("pfTotal", plural(stats.total, "case"));
   renderStageMeters(document.getElementById("pfStageMeters"), stats);
 
@@ -107,9 +111,10 @@ async function init(user) {
   renderDetails(user);
   const collaborators = renderCollaborators();
 
-  const { cases } = await loadMyCases({
+  const loaded = await loadMyCases({
     onUpdate: (list, state) => renderCases(user, collaborators, list, state),
   });
+  const { cases } = loaded;
 
   const activity = document.getElementById("pfActivity");
   try {
@@ -118,6 +123,8 @@ async function init(user) {
     console.warn("[profile] notifications unavailable", err);
     activity.replaceChildren(h("li", { class: "up-empty" }, "Notifications couldn't load right now."));
   }
+
+  await loadCaseFiles(cases, { onUpdate: () => renderCases(user, collaborators, cases, loaded) });
 }
 
 const user = requireUser();

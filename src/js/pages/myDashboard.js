@@ -1,7 +1,9 @@
 // My Dashboard (src/pages/my_dashboard.html), computed from the signed-in user's case list.
-// Uploaded scans, third-party files and per-slot counts have no endpoint yet
-// and stay "—" in the markup.
+// The KPI tiles and the per-slot card count files, from shared/caseFiles.js:
+// 2D designs are the jawstruct .txt files, SmartRPD 3D files the jaw STLs,
+// third-party 3D files the extra-slot STLs, and uploaded scans all STLs.
 
+import { loadCaseFiles } from "../shared/caseFiles.js";
 import {
   caseStats,
   createdInPreviousWindow,
@@ -10,11 +12,12 @@ import {
   designStateCounts,
   isOwnedBy,
   recentCases,
+  slotLabel,
+  slotStats,
 } from "../shared/caseStats.js";
 import { loadMyCases } from "../shared/myCases.js";
 import { toast } from "../shared/toast.js";
 import {
-  STAGES,
   h,
   markUpdated,
   monthLabel,
@@ -30,19 +33,26 @@ import {
 } from "../shared/userPages.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-// Chart colors in the brand teal (tokens.css), validated with the dataviz
-// palette checks: --primary for the single-series columns (its 2.7:1 contrast
-// is covered by the table view), and a light → dark teal ramp for the ordered
-// 2D states.
+// Chart colors, validated with the dataviz palette checks: the brand teal
+// (tokens.css --primary) for the single-series columns (its 2.7:1 contrast is
+// covered by the table view), and one light → dark ramp per design step for its
+// ordered states, so the two donuts read as different charts: teal for 2D, the
+// reference blue (steps 400–700) for 3D.
 const COLUMN_COLOR = "#3bae95";
-const DESIGN_RAMP = [
-  ["not_started", "Not started", "#5ec0a8"],
-  ["pending", "Pending", "#3bae95"],
-  ["in_progress", "In progress", "#25735f"],
-  ["done", "Done", "#164a3e"],
+// Cases that haven't reached a design step yet are left out of its donut.
+const DESIGN_LEGEND = [
+  ["pending", "Pending"],
+  ["in_progress", "In progress"],
+  ["done", "Done"],
 ];
+// In DESIGN_LEGEND order.
+const DESIGN_RAMPS = {
+  "2d": ["#3bae95", "#25735f", "#164a3e"],
+  "3d": ["#3987e5", "#1c5cab", "#0d366b"],
+};
 
-const state = { cases: [], load: { stale: false, pending: 0 } };
+// filesRunning: the file check starts as soon as the case list is in.
+const state = { cases: [], filesRunning: true };
 
 function filters() {
   const period = document.getElementById("dbPeriod").value;
@@ -151,6 +161,62 @@ function renderDelta(id, current, previous, days) {
   el.replaceChildren(text, " ", h("span", { class: diff > 0 ? "is-up" : "is-down" }, diff > 0 ? "▲" : "▼"), vs);
 }
 
+// While the file check runs, or once the backend has refused part of it.
+function uncheckedText(unchecked) {
+  return state.filesRunning
+    ? `Checking ${plural(unchecked, "case")}…`
+    : `${plural(unchecked, "case")} not checked — reload to retry`;
+}
+
+// A file tile's total and change, shown only once every case in both periods
+// has been checked.
+function renderFileTile(id, key, stats, prevStats, days) {
+  const unchecked = stats.filesPending + prevStats.filesPending;
+  setText(id, unchecked ? "…" : String(stats[key]));
+  if (!unchecked) {
+    renderDelta(`${id}Delta`, stats[key], prevStats[key], days);
+    return;
+  }
+  document.getElementById(`${id}Delta`).replaceChildren(h("span", { class: "up-faint" }, uncheckedText(unchecked)));
+}
+
+// One row per extra 3D slot, named as in the app, with its share of the
+// period's third-party files.
+function renderSlots(cases, unchecked) {
+  const rows = slotStats(cases);
+  const total = rows.reduce((n, r) => n + r.count, 0);
+  document.getElementById("dbSlots").replaceChildren(
+    ...rows.map((r) => {
+      const label = slotLabel(r);
+      const share = unchecked || !total ? 0 : (r.count / total) * 100;
+      return h(
+        "li",
+        {},
+        h("div", { class: "up-slot-head" }, h("span", {}, label), h("b", {}, unchecked ? "…" : String(r.count))),
+        h(
+          "div",
+          { class: "up-bar", role: "img", "aria-label": unchecked ? `${label}: still counting` : `${label}: ${r.count} of ${plural(total, "file")}` },
+          h("div", { style: { width: `${share}%` } })
+        )
+      );
+    })
+  );
+  let note = "No third-party files for these filters.";
+  if (unchecked) note = uncheckedText(unchecked);
+  else if (total) note = `Each bar is the slot's share of ${plural(total, "third-party file")}.`;
+  setText("dbSlotsNote", note);
+}
+
+// Cases that have reached their 2D or 3D design step, by how far it has got:
+// pending, in progress (drafted), done (approved or any later status).
+function renderDesignDonut(id, cases, step) {
+  const counts = designStateCounts(cases, step);
+  renderDonut(
+    document.getElementById(id),
+    DESIGN_LEGEND.map(([key, label], i) => ({ label, count: counts[key], color: DESIGN_RAMPS[step][i] }))
+  );
+}
+
 function render(user) {
   const { days, scope } = filters();
   const scoped = state.cases.filter((c) => inScope(c, scope, user.username));
@@ -158,32 +224,20 @@ function render(user) {
   const previous = days == null ? [] : scoped.filter((c) => createdInPreviousWindow(c, days));
   const stats = caseStats(inPeriod, user.username);
   const prevStats = caseStats(previous, user.username);
-  const loading = state.load.pending > 0;
 
-  setText("db2d", loading ? "…" : String(stats.designs2d));
-  setText("db3d", loading ? "…" : String(stats.designs3d));
-  renderDelta("db2dDelta", stats.designs2d, prevStats.designs2d, days);
-  renderDelta("db3dDelta", stats.designs3d, prevStats.designs3d, days);
+  renderFileTile("dbScans", "scans", stats, prevStats, days);
+  renderFileTile("db2d", "designFiles", stats, prevStats, days);
+  renderFileTile("db3d", "jawStls", stats, prevStats, days);
+  renderFileTile("dbThird", "extraStls", stats, prevStats, days);
+  renderSlots(inPeriod, stats.filesPending);
 
   const monthly = days == null;
   setText("dbCreatedSub", monthly ? "Per month" : `Last ${days} days`);
   setText("dbCreatedUnit", monthly ? "Month" : "Day");
   renderCreatedChart(document.getElementById("dbCreatedChart"), createdSeries(scoped, days), monthly);
 
-  renderDonut(
-    document.getElementById("dbStageDonut"),
-    STAGES.map((s) => ({ label: s.label, count: stats[s.key], color: s.color }))
-  );
-  const notes = [];
-  if (stats.needsAction) notes.push(`${plural(stats.needsAction, "case")} in Preparation need${stats.needsAction === 1 ? "s" : ""} action.`);
-  if (stats.unset) notes.push(`${plural(stats.unset, "case")} without a status ${stats.unset === 1 ? "isn't" : "aren't"} shown.`);
-  setText("dbStageNote", notes.join(" "));
-
-  const design = designStateCounts(inPeriod, "2d");
-  renderDonut(
-    document.getElementById("dbDesignDonut"),
-    DESIGN_RAMP.map(([key, label, color]) => ({ label, count: design[key], color }))
-  );
+  renderDesignDonut("db2dDesignDonut", inPeriod, "2d");
+  renderDesignDonut("db3dDesignDonut", inPeriod, "3d");
 
   renderRecentCases(document.getElementById("dbRecentCases"), recentCases(scoped, 5), user.username);
   markUpdated();
@@ -201,7 +255,6 @@ async function init(user) {
   await loadMyCases({
     onUpdate: (cases, load) => {
       state.cases = cases;
-      state.load = load;
       render(user);
       if (load.stale && !warnedStale) {
         warnedStale = true;
@@ -209,6 +262,10 @@ async function init(user) {
       }
     },
   });
+  // Newest first, so the shorter periods fill in first.
+  await loadCaseFiles(recentCases(state.cases, Infinity), { onUpdate: () => render(user) });
+  state.filesRunning = false;
+  render(user);
 }
 
 const user = requireUser();

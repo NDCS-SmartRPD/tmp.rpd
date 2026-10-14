@@ -11,6 +11,8 @@ import {
   designStateCounts,
   needsAction,
   recentCases,
+  slotLabel,
+  slotStats,
   stageOf,
 } from "../src/js/shared/caseStats.js";
 
@@ -75,10 +77,6 @@ describe("caseStats", () => {
     expect(s).toMatchObject({ owned: 4, shared: 2 });
   });
 
-  test("a design counts once it has been drafted", () => {
-    expect(s).toMatchObject({ designs2d: 4, designs3d: 3 });
-  });
-
   test("overdue and due-soon skip completed cases", () => {
     // A (2 days late) and C (5 days late) are overdue; D is completed; B is due in 3 days.
     expect(s).toMatchObject({ overdue: 2, dueSoon: 1 });
@@ -86,6 +84,15 @@ describe("caseStats", () => {
 
   test("counts cases still waiting for details", () => {
     expect(s.withoutDetails).toBe(1);
+  });
+
+  test("adds up the files of checked cases and counts the cases not checked yet", () => {
+    const files = [
+      { case_files: { jaws: 2, slots: [1, 3], designs: 2 } },
+      { case_files: { jaws: 1, slots: [], designs: 0 } },
+      {},
+    ];
+    expect(caseStats(files, "me", NOW)).toMatchObject({ jawStls: 3, extraStls: 2, scans: 5, designFiles: 2, filesPending: 1 });
   });
 
   test("2D design states add up to the case count", () => {
@@ -136,6 +143,34 @@ describe("createdSeries", () => {
     expect(series[11].count).toBe(1); // October 2026
     expect(series[2].count).toBe(1); // January 2026
     expect(series.reduce((n, b) => n + b.count, 0)).toBe(2); // 2024 is outside the window
+  });
+});
+
+describe("extra slots", () => {
+  const cases = [
+    { case_files: { jaws: 2, slots: [1, 2], designs: 2, material: 0 } },
+    { case_files: { jaws: 2, slots: [2, 4], designs: 2, material: 2 } },
+    { case_files: { jaws: 1, slots: [3], designs: 0, material: null } },
+    {}, // not checked yet
+  ];
+
+  test("counts each slot's files and the material of the cases they're on", () => {
+    expect(slotStats(cases)).toEqual([
+      { slot: 1, count: 1, metal: 1, acrylic: 0 },
+      { slot: 2, count: 2, metal: 1, acrylic: 1 },
+      { slot: 3, count: 1, metal: 1, acrylic: 0 },
+      { slot: 4, count: 1, metal: 0, acrylic: 1 },
+    ]);
+  });
+
+  test("names the slots as the app does", () => {
+    expect(slotStats(cases).map(slotLabel)).toEqual([
+      "Slot 1: Upper jaw",
+      "Slot 2: Metal RPD / Monoblock",
+      "Slot 3: Lower jaw",
+      "Slot 4: Monoblock",
+    ]);
+    expect(slotLabel({ slot: 4 })).toBe("Slot 4: Metal RPD"); // no files: the app's default
   });
 });
 

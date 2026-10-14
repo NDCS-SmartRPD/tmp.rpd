@@ -52,8 +52,6 @@ export const DESIGN_STATE_LABELS = {
   done: "Done",
 };
 
-const DESIGN_EXISTS = new Set(["in_progress", "done"]);
-
 // How far the case is through its 2D or 3D design step: pending → drafted
 // (in progress) → approved or any later status (done).
 export function designState(apiStatus, step) {
@@ -110,11 +108,14 @@ export function caseStats(cases, username, now = Date.now()) {
     unset: 0,
     owned: 0,
     shared: 0,
-    designs2d: 0,
-    designs3d: 0,
     withoutDetails: 0,
     overdue: 0,
     dueSoon: 0,
+    scans: 0,
+    jawStls: 0,
+    extraStls: 0,
+    designFiles: 0,
+    filesPending: 0,
   };
   const today = toDayMidnight(now);
   for (const c of cases) {
@@ -125,9 +126,18 @@ export function caseStats(cases, username, now = Date.now()) {
     if (needsAction(c.new_status)) stats.needsAction += 1;
     if (isOwnedBy(c, username)) stats.owned += 1;
     else stats.shared += 1;
-    // A design exists once it has been drafted.
-    if (DESIGN_EXISTS.has(designState(c.new_status, "2d"))) stats.designs2d += 1;
-    if (DESIGN_EXISTS.has(designState(c.new_status, "3d"))) stats.designs3d += 1;
+    // Files, set by caseFiles.js once the case is checked: jaw STLs (SmartRPD
+    // 3D), extra-slot STLs (third-party 3D) and 2D design .txt files. Uploaded
+    // scans are the STLs.
+    if (c.case_files == null) {
+      stats.filesPending += 1;
+    } else {
+      const { jaws, slots, designs } = c.case_files;
+      stats.jawStls += jaws;
+      stats.extraStls += slots.length;
+      stats.scans += jaws + slots.length;
+      stats.designFiles += designs;
+    }
     const due = toDayMidnight(dueDateMs(c));
     if (due != null && stage !== "completed" && normalizeStatus(c.new_status) !== "delivered") {
       if (due < today) stats.overdue += 1;
@@ -141,6 +151,36 @@ export function designStateCounts(cases, step) {
   const counts = Object.fromEntries(DESIGN_STATES.map((s) => [s, 0]));
   for (const c of cases) counts[designState(c.new_status, step)] += 1;
   return counts;
+}
+
+// The four extra 3D slots, named as the case list and 2D page name them
+// (slotLabel there): framework slots 2 and 4 read "Monoblock" on a full-acrylic
+// case and "Metal RPD" otherwise.
+const SLOT_JAW_NAMES = { 1: "Upper jaw", 3: "Lower jaw" };
+const FULL_ACRYLIC_MATERIAL = 2; // as in 2D/JawDesignProposal.js
+
+// Files per extra slot over the checked cases, split by the cases' material.
+export function slotStats(cases) {
+  const rows = [1, 2, 3, 4].map((slot) => ({ slot, count: 0, metal: 0, acrylic: 0 }));
+  for (const c of cases) {
+    if (!c.case_files) continue;
+    const acrylic = Number(c.case_files.material) === FULL_ACRYLIC_MATERIAL;
+    for (const slot of c.case_files.slots) {
+      const row = rows[slot - 1];
+      if (!row) continue;
+      row.count += 1;
+      row[acrylic ? "acrylic" : "metal"] += 1;
+    }
+  }
+  return rows;
+}
+
+// "Slot 1: Upper jaw", "Slot 2: Metal RPD"; a framework slot holding files from
+// both kinds of case reads "Metal RPD / Monoblock".
+export function slotLabel({ slot, metal = 0, acrylic = 0 }) {
+  let name = SLOT_JAW_NAMES[slot];
+  if (!name) name = !acrylic ? "Metal RPD" : metal ? "Metal RPD / Monoblock" : "Monoblock";
+  return `Slot ${slot}: ${name}`;
 }
 
 // Newest first by creation_date; cases without a date go last.
