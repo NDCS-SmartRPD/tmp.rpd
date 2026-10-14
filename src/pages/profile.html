@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>My Profile</title>
+    <link rel="icon" href="../../assets/profile.png" type="image/png" />
+    <link rel="stylesheet" href="../../vendor/manrope/manrope.css" />
+    <link rel="stylesheet" href="../../css/tokens.css" />
+    <link rel="stylesheet" href="../../vendor/font-awesome/css/all.min.css" />
+    <link rel="stylesheet" href="../../css/toast.css" />
+    <link rel="stylesheet" href="../../css/user_pages.css" />
+  </head>
+  <body class="up-body">
+    <!-- Layout of MyProfile.tsx in "Create User Profile Dashboard" (Figma Make).
+         Filled by src/js/pages/profile.js from the session, case list and
+         notifications. Account + Preferences became Case activity; Practice / lab
+         became Collaborators — the app has no data for the originals. -->
+    <header class="up-appbar">
+      <a class="up-brand" href="./case_list.html">SmartRPD</a>
+      <nav class="up-nav" aria-label="Pages">
+        <a href="./case_list.html">Cases</a>
+        <a href="./profile.html" aria-current="page">Profile</a>
+        <a href="./my_dashboard.html">Dashboard</a>
+        <a href="./case_kpis.html">KPIs</a>
+      </nav>
+      <span class="up-updated">Last updated <b id="lastUpdated">—</b></span>
+      <a class="up-appbar-avatar" id="appbarAvatar" href="./profile.html" title="View my profile" aria-label="View my profile">?</a>
+    </header>
+
+    <main class="up-main">
+      <section class="up-card up-cover" aria-labelledby="pfName">
+        <div class="up-cover-banner"></div>
+        <div class="up-cover-body">
+          <div class="up-cover-avatar"><span class="up-initials-lg" id="pfInitials" aria-hidden="true">?</span></div>
+          <div class="up-cover-who">
+            <h1 id="pfName">—</h1>
+            <p id="pfSummary">Loading…</p>
+          </div>
+          <div class="up-cover-actions">
+            <a class="up-btn" href="./my_dashboard.html">View dashboard</a>
+            <button type="button" class="up-btn up-btn-primary" data-change-password>Change password</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="up-cols">
+        <div class="up-col">
+          <section class="up-card" aria-labelledby="pfDetailsTitle">
+            <div class="up-card-head"><h2 id="pfDetailsTitle">Account details</h2></div>
+            <dl class="up-fields" id="pfDetails"></dl>
+          </section>
+
+          <section class="up-card" aria-labelledby="pfCollabTitle">
+            <div class="up-card-head">
+              <h2 id="pfCollabTitle">Collaborators</h2>
+              <span class="up-card-meta" id="pfCollabCount"></span>
+            </div>
+            <ul class="up-people" id="pfCollaborators"></ul>
+          </section>
+
+          <section class="up-card" aria-labelledby="pfActivityTitle">
+            <div class="up-card-head"><h2 id="pfActivityTitle">Recent activity</h2></div>
+            <ol class="up-activity" id="pfActivity"><li class="up-empty">Loading…</li></ol>
+          </section>
+        </div>
+
+        <div class="up-col">
+          <section class="up-card" aria-labelledby="pfContribTitle">
+            <div class="up-card-head"><h2 id="pfContribTitle">My contributions</h2></div>
+            <dl class="up-contrib">
+              <div><dd>—</dd><dt>Scans</dt></div>
+              <div><dd id="pf2dDesigns">…</dd><dt>2D designs</dt></div>
+              <div><dd id="pf3dDesigns">…</dd><dt>SmartRPD 3D</dt></div>
+              <div><dd>—</dd><dt>Third-party 3D</dt></div>
+            </dl>
+            <p class="up-note">2D and 3D counts come from case status. Scans and third-party 3D files show — until the server reports totals.</p>
+          </section>
+
+          <section class="up-card" aria-labelledby="pfCaseActivityTitle">
+            <div class="up-card-head">
+              <h2 id="pfCaseActivityTitle">Case activity</h2>
+              <a class="up-card-action" href="./case_list.html">View cases</a>
+            </div>
+            <dl class="up-meter">
+              <div class="up-meter-total"><dt>Cases you can open</dt><dd id="pfTotal">…</dd></div>
+            </dl>
+            <div class="up-meter up-meter-stages" id="pfStageMeters"></div>
+            <p class="up-note" id="pfCaseNote"></p>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <script type="module" src="../js/pages/profile.js"></script>
+  </body>
+</html>

@@ -576,6 +576,39 @@ button {
   font-size: 16px;
 }
 
+/* Profile button: a round picture (assets/default-avatar.svg until users have
+   photos) with a white ring. The extra .cm-header outranks the ≤640 header
+   rule, which would flatten the ring into a grey border. */
+.cm-header .cm-user-avatar.cm-profile-btn {
+  overflow: hidden; /* clip the picture to the circle */
+  /* The ring is a real border, not a box-shadow spread: a shadow ring leaves a
+     hairline seam against the picture's edge. White background for the same
+     reason — the picture's anti-aliased edge blends into it. */
+  border: 2px solid #fff;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
+  transition: box-shadow var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease);
+}
+.cm-header .cm-user-avatar.cm-profile-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 2px rgba(59, 174, 149, 0.35), 0 6px 14px rgba(15, 23, 42, 0.2);
+}
+/* Menu open (or keyboard focus): solid brand ring. */
+.cm-header .cm-user-avatar.cm-profile-btn[aria-expanded="true"],
+.cm-header .cm-user-avatar.cm-profile-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--primary);
+}
+.cm-profile-btn img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* a real photo will fill the circle the same way */
+}
+/* Flex, not block: a line box would leave a gap under the button and lift it
+   off the bell's center line. */
+.cm-profile { display: flex; }
+
 .cm-user-avatar.logout {
   color: #fff;
   cursor: pointer;

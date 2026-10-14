@@ -6,6 +6,7 @@ import { openSelectMenu, closeSelectMenu, isSelectMenuOpenFor } from "../shared/
 import { logApi, statusLabel, STATUS_LABELS } from "../shared/apiLog.js";
 import { reportHtmlToDocxBytes } from "../shared/accessibility.js";
 import { setupAppSidebar } from "../shared/appSidebar.js";
+import { setupUserProfileMenu } from "../shared/userProfileMenu.js";
 import { buildReportHtml } from "../2D/noticeboard.js";
 import { fetchJawStruct } from "../2D/jawStructApi.js";
 import { decodeJawStructResponse, decodedJawMaterial } from "../2D/jawStructCodec.js";
@@ -2579,6 +2580,34 @@ document.addEventListener("DOMContentLoaded", async () => {
   // (src/pages/admin/) than the normal case_list.html (src/pages/).
   const _inAdminDir = /\/admin\//.test(window.location.pathname);
   setupAppSidebar({ indexHref: _inAdminDir ? "../../../index.html" : "../../index.html" });
+  setupUserProfileMenu();
+
+  // Wire every logout affordance (the profile menu's Logout here, and the admin
+  // page's user-chip item + mobile header button, all carry class .logout).
+  // Before the case fetch, so logging out still works if the list fails to load.
+  const handleLogout = async () => {
+    const confirmed = await confirmModal({
+      title: "Log out?",
+      message: "You'll need to sign in again to access your cases.",
+      confirmText: "Log out",
+      cancelText: "Cancel",
+      variant: "info",
+    });
+    if (!confirmed) return;
+    // Drop the cached case list (compute the key while the user is still known)
+    // so the next account doesn't briefly see this one's list on instant paint.
+    const cacheKey = caseListCacheKey();
+    if (cacheKey) { try { localStorage.removeItem(cacheKey); } catch { /* ignore */ } }
+    localStorage.removeItem("loggedInUser");
+    // admin_case_list.html is one directory deeper (src/pages/admin/) than the
+    // normal case_list.html (src/pages/); index.html sits at the web root.
+    window.location.href = /\/admin\//.test(window.location.pathname)
+      ? "../../../index.html"
+      : "../../index.html";
+  };
+  document.querySelectorAll(".logout").forEach((btn) =>
+    btn.addEventListener("click", handleLogout)
+  );
 
   updateThumbnail();
   const cases = await fetchCases();
@@ -2694,32 +2723,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     // No reload-on-becoming-visible: the camera and the file picker HIDE the page
     // on Android, so returning with a photo fired it and wiped the open dialog
     // along with the capture. The refresh button above is the only way in.
-
-    // Wire every logout affordance (the user-chip dropdown item + the
-    // mobile-only header logout button both carry class .logout).
-    const handleLogout = async () => {
-      const confirmed = await confirmModal({
-        title: "Log out?",
-        message: "You'll need to sign in again to access your cases.",
-        confirmText: "Log out",
-        cancelText: "Cancel",
-        variant: "info",
-      });
-      if (!confirmed) return;
-      // Drop the cached case list (compute the key while the user is still known)
-      // so the next account doesn't briefly see this one's list on instant paint.
-      const cacheKey = caseListCacheKey();
-      if (cacheKey) { try { localStorage.removeItem(cacheKey); } catch { /* ignore */ } }
-      localStorage.removeItem("loggedInUser");
-      // admin_case_list.html is one directory deeper (src/pages/admin/) than the
-      // normal case_list.html (src/pages/); index.html sits at the web root.
-      window.location.href = /\/admin\//.test(window.location.pathname)
-        ? "../../../index.html"
-        : "../../index.html";
-    };
-    document.querySelectorAll(".logout").forEach((btn) =>
-      btn.addEventListener("click", handleLogout)
-    );
 
     const headWrap = document.querySelector(".table-head-wrapper");
     const bodyWrap = document.querySelector(".table-body-wrapper");

@@ -153,9 +153,26 @@
               <i class="fa fa-bell" aria-hidden="true"></i>
               <span id="notificationDot" class="cm-bell-badge" hidden>0</span>
             </button>
-            <button class="cm-user-avatar logout" type="button" title="Log out" aria-label="Log out">
-              <i class="fa fa-right-from-bracket" aria-hidden="true"></i>
-            </button>
+            <div class="cm-profile au-user-menu">
+              <button id="profileBtn" class="cm-user-avatar cm-profile-btn" type="button" title="User profile" aria-label="User profile" aria-expanded="false" aria-controls="profileMenu">
+                <img src="../../assets/default-avatar.svg" alt="" width="40" height="40" />
+              </button>
+              <!-- Same dropdown styles as the admin user chip. Toggled by
+                   shared/userProfileMenu.js. Logout keeps .logout so
+                   caseManagement.js's logout handler wires it; View Profile and
+                   Dashboard open profile.html and my_dashboard.html. -->
+              <div id="profileMenu" class="au-user-dropdown" hidden>
+                <button type="button" id="profileViewBtn" class="au-user-dropdown-item">
+                  <i class="fa fa-user" aria-hidden="true"></i> View Profile
+                </button>
+                <button type="button" id="profileDashboardBtn" class="au-user-dropdown-item">
+                  <i class="fa fa-gauge" aria-hidden="true"></i> Dashboard
+                </button>
+                <button type="button" class="au-user-dropdown-item logout">
+                  <i class="fa fa-right-from-bracket" aria-hidden="true"></i> Logout
+                </button>
+              </div>
+            </div>
 
             <div id="notificationPopup" class="notification-popup hidden">
               <div class="notification-header">
