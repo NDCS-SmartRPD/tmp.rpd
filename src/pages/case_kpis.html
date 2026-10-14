@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Case KPIs</title>
+    <link rel="icon" href="../../assets/profile.png" type="image/png" />
+    <link rel="stylesheet" href="../../vendor/manrope/manrope.css" />
+    <link rel="stylesheet" href="../../css/tokens.css" />
+    <link rel="stylesheet" href="../../vendor/font-awesome/css/all.min.css" />
+    <link rel="stylesheet" href="../../css/toast.css" />
+    <link rel="stylesheet" href="../../css/user_pages.css" />
+  </head>
+  <body class="up-body">
+    <!-- Layout of KpiTable.tsx in "Create User Profile Dashboard" (Figma Make),
+         filled by src/js/pages/caseKpis.js from the signed-in user's case list. -->
+    <header class="up-appbar">
+      <a class="up-brand" href="./case_list.html">SmartRPD</a>
+      <nav class="up-nav" aria-label="Pages">
+        <a href="./case_list.html">Cases</a>
+        <a href="./profile.html">Profile</a>
+        <a href="./my_dashboard.html">Dashboard</a>
+        <a href="./case_kpis.html" aria-current="page">KPIs</a>
+      </nav>
+      <span class="up-updated">Last updated <b id="lastUpdated">—</b></span>
+      <a class="up-appbar-avatar" id="appbarAvatar" href="./profile.html" title="View my profile" aria-label="View my profile">?</a>
+    </header>
+
+    <main class="up-main up-main-kpis">
+      <div class="up-kpi-head">
+        <div>
+          <h1>Case KPIs</h1>
+          <p>Metrics scoped to cases you own or can access</p>
+          <p class="up-kpi-status" id="kpiStatus" role="status"></p>
+        </div>
+        <div class="up-seg" role="group" aria-label="Period" id="kpiPeriod">
+          <button type="button" data-days="1" aria-pressed="false">Today</button>
+          <button type="button" data-days="7" aria-pressed="true">Last 7 days</button>
+          <button type="button" data-days="30" aria-pressed="false">Last 30 days</button>
+        </div>
+      </div>
+
+      <div class="up-highlights" id="kpiHighlights"></div>
+
+      <section class="up-kpi-panel" aria-label="All metrics">
+        <div class="up-kpi-tools">
+          <div class="up-chips" role="group" aria-label="Category" id="kpiGroups"></div>
+          <input class="up-search" id="kpiSearch" type="search" placeholder="Search metrics" aria-label="Search metrics" />
+        </div>
+        <div class="up-table-wrap">
+          <table class="up-kpi-table">
+            <thead>
+              <tr>
+                <th scope="col">Metric</th>
+                <th scope="col">Category</th>
+                <th scope="col" class="up-num">Current</th>
+                <th scope="col" class="up-num">Previous</th>
+                <th scope="col" class="up-num">Change</th>
+                <th scope="col">7-period trend</th>
+                <th scope="col">Share of all cases</th>
+              </tr>
+            </thead>
+            <tbody id="kpiRows"><tr><td colspan="7" class="up-empty">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <p class="up-kpi-foot" id="kpiFoot"></p>
+      </section>
+    </main>
+
+    <script type="module" src="../js/pages/caseKpis.js"></script>
+  </body>
+</html>
