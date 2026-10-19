@@ -101,6 +101,8 @@ const SVG_TINT_FILTERS = {
   "tint-rose": { color: "#c0285f" },
   "tint-rose-deep": { color: "#a31552" },
   "tint-bar-placed": { color: "#a4d075" },
+  // Suggested (not yet placed) ball clasps: the clasp-suggestion green, never the placed grey.
+  "tint-clasp-suggestion": { color: "#2e9e5b" },
   "tint-jaw-plate": { color: "#0288d1" },
 };
 
@@ -130,8 +132,8 @@ const FLANGE_BAND_MASK_VALUES = "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 10 -20 20 0 -10";
 // solid, and the layer's CSS opacity puts it back once for the whole union.
 const ACRYLIC_ART_FILL_ALPHA = 0.6;
 
-function solidAcrylicMatrixValues() {
-  const [r, g, b] = hexToRgbFractions(SVG_TINT_FILTERS["tint-flange"].color);
+function solidMatrixValues(hex) {
+  const [r, g, b] = hexToRgbFractions(hex);
   return (
     `0 0 0 0 ${r.toFixed(4)} ` +
     `0 0 0 0 ${g.toFixed(4)} ` +
@@ -140,20 +142,26 @@ function solidAcrylicMatrixValues() {
   );
 }
 
-// Filters for the acrylic base layer: pink parts and flange bands drawn solid in the one
-// acrylic pink, plus the flange's denture tooth on its own for the tooth group.
+// Filters for the acrylic layers: pink parts and flange bands drawn solid in the one acrylic
+// pink, the flange footprint in black for the base layer's cut-out, and the denture tooth alone.
 function buildAcrylicBaseFilters() {
+  const acrylicPink = SVG_TINT_FILTERS["tint-flange"].color;
   const solid = svgEl("filter", { id: "acrylic-solid", "color-interpolation-filters": "sRGB" });
-  solid.appendChild(svgEl("feColorMatrix", { type: "matrix", values: solidAcrylicMatrixValues() }));
+  solid.appendChild(svgEl("feColorMatrix", { type: "matrix", values: solidMatrixValues(acrylicPink) }));
 
-  const band = svgEl("filter", { id: "acrylic-flange-band-solid", "color-interpolation-filters": "sRGB" });
-  band.appendChild(
-    svgEl("feColorMatrix", { in: "SourceGraphic", type: "matrix", values: FLANGE_BAND_MASK_VALUES, result: "bandMask" })
-  );
-  band.appendChild(
-    svgEl("feComposite", { in: "SourceGraphic", in2: "bandMask", operator: "in", result: "band" })
-  );
-  band.appendChild(svgEl("feColorMatrix", { in: "band", type: "matrix", values: solidAcrylicMatrixValues() }));
+  const bandOnly = (id, hex) => {
+    const filterEl = svgEl("filter", { id, "color-interpolation-filters": "sRGB" });
+    filterEl.appendChild(
+      svgEl("feColorMatrix", { in: "SourceGraphic", type: "matrix", values: FLANGE_BAND_MASK_VALUES, result: "bandMask" })
+    );
+    filterEl.appendChild(
+      svgEl("feComposite", { in: "SourceGraphic", in2: "bandMask", operator: "in", result: "band" })
+    );
+    filterEl.appendChild(svgEl("feColorMatrix", { in: "band", type: "matrix", values: solidMatrixValues(hex) }));
+    return filterEl;
+  };
+  const band = bandOnly("acrylic-flange-band-solid", acrylicPink);
+  const knockout = bandOnly("flange-band-knockout", "#000000");
 
   const tooth = svgEl("filter", { id: "flange-tooth-only", "color-interpolation-filters": "sRGB" });
   tooth.appendChild(
@@ -172,7 +180,7 @@ function buildAcrylicBaseFilters() {
   };
   thresholdStep("SourceGraphic", "-0.25", "grown");
   thresholdStep("grown", "-3.75", "closed");
-  return [solid, band, tooth, close];
+  return [solid, band, knockout, tooth, close];
 }
 
 // Dilate-then-erode radius (user units, ~1:1 with the tooth art's own pixels) that closes
@@ -409,8 +417,8 @@ const ACRYLIC_PIECE_SELECTOR =
   "image.major-connector-image.is-acrylic, image.plate-image.is-acrylic, image.minor-connector-image.is-acrylic";
 
 // Move a tooth's placed pink parts into the arch's acrylic base layer (same tooth frame) so
-// they union seamlessly; a flange leaves a band copy there and keeps its denture tooth here.
-function moveAcrylicPiecesToBaseLayer(group, base, toothTransform) {
+// they union seamlessly, and its flange into the top flange layer.
+function moveAcrylicPiecesToLayers(group, layers, toothTransform) {
   const children = [...group.children];
   const pieces = children.filter(
     (child) =>
@@ -422,18 +430,31 @@ function moveAcrylicPiecesToBaseLayer(group, base, toothTransform) {
     (child) => child.classList.contains("component-visual") && child.querySelector("image.mesh-image-native")
   );
   if (!pieces.length && !flanges.length) return;
+  const inToothFrame = (node) => {
+    const frame = svgEl("g", { class: "tooth-acrylic", transform: toothTransform });
+    frame.appendChild(node);
+    return frame;
+  };
+  const bandCopy = (flange, imageClass) => {
+    const copy = flange.cloneNode(true);
+    copy.querySelector("image.mesh-image-native").setAttribute("class", `component-image ${imageClass}`);
+    return copy;
+  };
   const solid = svgEl("g", { class: "tooth-acrylic", transform: toothTransform });
   const lattice = svgEl("g", { class: "tooth-acrylic", transform: toothTransform });
   for (const piece of pieces) {
     (piece.classList.contains("component-plate-crossmesh") ? lattice : solid).appendChild(piece);
   }
   for (const flange of flanges) {
-    const band = flange.cloneNode(true);
-    band.querySelector("image.mesh-image-native").setAttribute("class", "component-image acrylic-flange-band");
-    solid.appendChild(band);
+    // The base keeps a band copy so its gap closing reaches the flange, and the mask cuts
+    // that footprint back out; the flange itself draws on top, band then denture tooth.
+    solid.appendChild(bandCopy(flange, "acrylic-flange-band"));
+    layers.knockout.appendChild(inToothFrame(bandCopy(flange, "acrylic-flange-knockout")));
+    layers.flangeBands.appendChild(inToothFrame(bandCopy(flange, "acrylic-flange-band")));
+    layers.flangeTeeth.appendChild(inToothFrame(flange));
   }
-  if (solid.childNodes.length) base.solid.appendChild(solid);
-  if (lattice.childNodes.length) base.lattice.appendChild(lattice);
+  if (solid.childNodes.length) layers.solid.appendChild(solid);
+  if (lattice.childNodes.length) layers.lattice.appendChild(lattice);
 }
 
 // Render one jaw: teeth, overlays, and click handlers.
@@ -454,14 +475,32 @@ export function renderJaw(jaw) {
   // All pink acrylic parts draw here, under the teeth, solid; the layer's opacity fades the
   // union once so flange, plate and connector junctions never double up.
   const acrylicLayer = svgEl("g", { class: "acrylic-base-layer" });
-  if (state.locks[jaw]) acrylicLayer.classList.add("is-locked");
+  // Flanges draw above every component, in their own layer; the base layer masks their
+  // footprint out so the two pinks meet edge to edge instead of doubling up.
+  const flangeLayer = svgEl("g", { class: "flange-layer" });
+  if (state.locks[jaw]) {
+    acrylicLayer.classList.add("is-locked");
+    flangeLayer.classList.add("is-locked");
+  }
+  const knockoutId = `flange-knockout-${jaw}`;
+  const everywhere = { x: "-1000", y: "-1000", width: "3000", height: "3000" };
+  const knockout = svgEl("mask", { id: knockoutId, maskUnits: "userSpaceOnUse", ...everywhere });
+  knockout.appendChild(svgEl("rect", { ...everywhere, fill: "white" }));
   // Solid parts get the gap-closing filter; a Mesh Plate's lattice must keep its holes.
-  const acrylicBase = {
+  const acrylicLayers = {
     solid: svgEl("g", { class: "acrylic-base-solid" }),
     lattice: svgEl("g", { class: "acrylic-base-lattice" }),
+    knockout,
+    flangeBands: svgEl("g", { class: "flange-band-layer" }),
+    flangeTeeth: svgEl("g", { class: "flange-tooth-layer" }),
   };
-  acrylicLayer.appendChild(acrylicBase.solid);
-  acrylicLayer.appendChild(acrylicBase.lattice);
+  acrylicLayer.appendChild(acrylicLayers.solid);
+  acrylicLayer.appendChild(acrylicLayers.lattice);
+  flangeLayer.appendChild(acrylicLayers.flangeBands);
+  flangeLayer.appendChild(acrylicLayers.flangeTeeth);
+  const archDefs = svgEl("defs", {});
+  archDefs.appendChild(knockout);
+  arch.appendChild(archDefs);
   arch.appendChild(acrylicLayer);
 
   const ids = TOOTH_ORDER[jaw];
@@ -542,7 +581,7 @@ export function renderJaw(jaw) {
     appendToothPlateComponentVisuals(group, tooth, toothId, jaw);
     appendPlateSuggestionPoints(group, tooth, toothId, jaw);
     appendPlacedComponentMarkers(group, tooth, toothId, jaw);
-    moveAcrylicPiecesToBaseLayer(group, acrylicBase, toothTransform);
+    moveAcrylicPiecesToLayers(group, acrylicLayers, toothTransform);
     appendRestSuggestionPoints(suggestionGroup, tooth, toothId, jaw);
     appendRetainerClaspSuggestionPoints(suggestionGroup, tooth, toothId, jaw);
     appendBallClaspSuggestions(suggestionGroup, tooth, toothId, jaw);
@@ -690,11 +729,15 @@ export function renderJaw(jaw) {
   if (jaw === "upper") {
     appendPalatalHoleArchOverlay(arch);
     appendPalatalBarArchOverlay(arch);
-    appendPalatalPlateArchOverlay(state.jawMaterial === 2 ? acrylicBase.solid : arch);
+    appendPalatalPlateArchOverlay(state.jawMaterial === 2 ? acrylicLayers.solid : arch);
     appendPalatalStrapArchOverlay(arch);
   }
 
+  if (acrylicLayers.flangeBands.childNodes.length) {
+    acrylicLayer.setAttribute("mask", `url(#${knockoutId})`);
+  }
   arch.appendChild(ballClaspLayer);
+  arch.appendChild(flangeLayer);
   arch.appendChild(suggestionLayer);
   reconcileArchChildren(svg, arch);
 }

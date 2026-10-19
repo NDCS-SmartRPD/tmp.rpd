@@ -527,6 +527,7 @@ export {
   BALL_CLASP_COMPONENT_ID,
   canPlaceBallClasp,
   getBallClaspPartnerToothId,
+  getBallClaspRenderScale,
   getBallClaspSurfacesForTooth,
   getBallClaspVisual,
   getRetainerClaspAssetReference,

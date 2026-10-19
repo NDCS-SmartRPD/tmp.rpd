@@ -832,8 +832,16 @@ const BALL_CLASP_SURFACE = "mesial";
 
 const BALL_CLASP_ASSET_BASE = "../../assets/RPD_Component/acrylic_clasps/Ball_Clasp";
 
-/** Art px -> arch units: sizes the ball and wire against the teeth as in the reference design. */
-const BALL_CLASP_RENDER_SCALE = 0.42;
+/** Art px -> arch units. The art scales about the ball centre, so wires keep their contact line. */
+const BALL_CLASP_RENDER_SCALE = 0.48;
+
+/** Premolar and molar owners (4–8) draw their ball clasp this much larger. */
+const BALL_CLASP_POSTERIOR_SCALE_BOOST = 1.3;
+
+export function getBallClaspRenderScale(toothId) {
+  const posterior = Number(toothId) % 10 >= 4;
+  return BALL_CLASP_RENDER_SCALE * (posterior ? BALL_CLASP_POSTERIOR_SCALE_BOOST : 1);
+}
 
 /**
  * The exported art, drawn for the screen-left side of each jaw (upper right, lower right):
@@ -950,7 +958,7 @@ export function getBallClaspVisual(toothId, surface) {
   const spot = ballClaspSpot(toothId, surface);
   const art = spot ? BALL_CLASP_ART[spot.art] : null;
   if (!art) return null;
-  const s = BALL_CLASP_RENDER_SCALE;
+  const s = getBallClaspRenderScale(toothId);
   return {
     href: `${BALL_CLASP_ASSET_BASE}/${art.file}`,
     x: spot.ball.x,

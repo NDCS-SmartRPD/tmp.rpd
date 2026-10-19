@@ -22,6 +22,7 @@ import { addPlacement } from "../src/js/2D/annotationTeethModel.js";
 import {
   COMPONENT_BY_ID,
   getBallClaspPartnerToothId,
+  getBallClaspRenderScale,
   getBallClaspSurfacesForTooth,
   getBallClaspVisual,
   getMinorConnectorSupportSides,
@@ -108,16 +109,19 @@ describe("ball clasp contacts", () => {
 
   // A re-exported file with a new viewBox would otherwise be squeezed into the old box,
   // drawing the clasp smaller and off its ball.
-  it("sizes every art file by its own viewBox, at one shared scale", () => {
-    const scales = OWNERS.map((id) => {
+  it("sizes every art file by its own viewBox, at its region's scale", () => {
+    for (const id of OWNERS) {
       const { href, image } = getBallClaspVisual(id, "mesial");
       const svg = readFileSync(join(process.cwd(), "src", "pages", href), "utf8");
       const [, , width, height] = svg.match(/viewBox="([^"]+)"/)[1].split(/\s+/).map(Number);
-      return { id, x: image.width / width, y: image.height / height };
-    });
-    for (const { x, y } of scales) {
-      expect(x).toBeCloseTo(scales[0].x, 6);
-      expect(y).toBeCloseTo(scales[0].x, 6);
+      expect(image.width / width).toBeCloseTo(getBallClaspRenderScale(id), 6);
+      expect(image.height / height).toBeCloseTo(getBallClaspRenderScale(id), 6);
+    }
+  });
+
+  it("draws premolar and molar ball clasps 30% larger than anterior ones", () => {
+    for (const [anterior, posterior] of [["13", "14"], ["23", "28"], ["43", "44"], ["41", "36"]]) {
+      expect(getBallClaspRenderScale(posterior)).toBeCloseTo(getBallClaspRenderScale(anterior) * 1.3, 6);
     }
   });
 });
