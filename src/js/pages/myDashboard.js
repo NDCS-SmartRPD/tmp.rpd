@@ -1,15 +1,16 @@
 // My Dashboard (src/pages/my_dashboard.html), computed from the signed-in user's case list.
 // The KPI tiles and the per-slot card count files, from shared/caseFiles.js:
 // 2D designs are the jawstruct .txt files, SmartRPD 3D files the jaw STLs,
-// third-party 3D files the extra-slot STLs, and uploaded scans all STLs.
+// extra slot 3D files the extra-slot STLs, and uploaded scans all STLs.
 
 import { loadCaseFiles } from "../shared/caseFiles.js";
+import { caseListHref } from "../shared/caseListFilter.js";
 import {
   caseStats,
   createdInPreviousWindow,
   createdSeries,
   createdWithin,
-  designStateCounts,
+  designStatusCounts,
   isOwnedBy,
   recentCases,
   slotLabel,
@@ -39,11 +40,13 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 // ordered states, so the two donuts read as different charts: teal for 2D, the
 // reference blue (steps 400–700) for 3D.
 const COLUMN_COLOR = "#3bae95";
-// Cases that haven't reached a design step yet are left out of its donut.
+// Each design donut counts cases by their current status, as the case list shows
+// it ("2D design pending", "… drafted", "… approved"), so the numbers match it.
+// A drafted design waits on the user, as the case list's Needs action says.
 const DESIGN_LEGEND = [
   ["pending", "Pending"],
-  ["in_progress", "In progress"],
-  ["done", "Done"],
+  ["drafted", "Drafted", "(needs action)"],
+  ["approved", "Approved"],
 ];
 // In DESIGN_LEGEND order.
 const DESIGN_RAMPS = {
@@ -181,7 +184,7 @@ function renderFileTile(id, key, stats, prevStats, days) {
 }
 
 // One row per extra 3D slot, named as in the app, with its share of the
-// period's third-party files.
+// period's extra slot 3D files.
 function renderSlots(cases, unchecked) {
   const rows = slotStats(cases);
   const total = rows.reduce((n, r) => n + r.count, 0);
@@ -201,19 +204,36 @@ function renderSlots(cases, unchecked) {
       );
     })
   );
-  let note = "No third-party files for these filters.";
+  let note = "No extra slot 3D files for these filters.";
   if (unchecked) note = uncheckedText(unchecked);
-  else if (total) note = `Each bar is the slot's share of ${plural(total, "third-party file")}.`;
+  else if (total) note = `Each bar is the slot's share of ${plural(total, "extra slot 3D file")}.`;
   setText("dbSlotsNote", note);
 }
 
-// Cases that have reached their 2D or 3D design step, by how far it has got:
-// pending, in progress (drafted), done (approved or any later status).
+// The case statuses a design donut counts, e.g. "2d_design_pending".
+const designStatuses = (step) => DESIGN_LEGEND.map(([key]) => `${step}_design_${key}`);
+
+// "View all" opens the case list filtered to exactly what each card counts:
+// its statuses, the period (not for Recent cases, which ignores it) and the
+// Cases filter.
+function updateViewAllLinks(days, scope) {
+  const links = {
+    dbCreatedViewAll: { days },
+    db2dViewAll: { days, statuses: designStatuses("2d") },
+    db3dViewAll: { days, statuses: designStatuses("3d") },
+    dbRecentViewAll: {},
+  };
+  for (const [id, filter] of Object.entries(links)) {
+    document.getElementById(id)?.setAttribute("href", caseListHref({ scope, ...filter }));
+  }
+}
+
+// Cases currently at the 2D or 3D design step's pending, drafted or approved status.
 function renderDesignDonut(id, cases, step) {
-  const counts = designStateCounts(cases, step);
+  const counts = designStatusCounts(cases, step);
   renderDonut(
     document.getElementById(id),
-    DESIGN_LEGEND.map(([key, label], i) => ({ label, count: counts[key], color: DESIGN_RAMPS[step][i] }))
+    DESIGN_LEGEND.map(([key, label, note], i) => ({ label, note, count: counts[key], color: DESIGN_RAMPS[step][i] }))
   );
 }
 
@@ -240,6 +260,7 @@ function render(user) {
   renderDesignDonut("db3dDesignDonut", inPeriod, "3d");
 
   renderRecentCases(document.getElementById("dbRecentCases"), recentCases(scoped, 5), user.username);
+  updateViewAllLinks(days, scope);
   markUpdated();
 }
 

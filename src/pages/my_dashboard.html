@@ -77,7 +77,7 @@
           <p class="up-kpi-delta" id="db3dDelta"></p>
         </section>
         <section class="up-card up-kpi">
-          <p class="up-kpi-label">Third-party 3D files</p>
+          <p class="up-kpi-label">Extra slot 3D files</p>
           <p class="up-kpi-value" id="dbThird">…</p>
           <p class="up-kpi-delta" id="dbThirdDelta"></p>
         </section>
@@ -87,7 +87,10 @@
         <section class="up-card" aria-labelledby="dbCreatedTitle">
           <div class="up-card-head">
             <h2 id="dbCreatedTitle">Cases created</h2>
-            <span class="up-card-meta" id="dbCreatedSub">Per day</span>
+            <span class="up-card-head-end">
+              <span class="up-card-meta" id="dbCreatedSub">Per day</span>
+              <a class="up-card-action" id="dbCreatedViewAll" href="./case_list.html" aria-describedby="dbCreatedTitle">View all</a>
+            </span>
           </div>
           <div class="up-chart" id="dbCreatedChart"></div>
           <details class="up-tableview">
@@ -100,19 +103,25 @@
         </section>
 
         <section class="up-card" aria-labelledby="db2dDesignTitle">
-          <div class="up-card-head"><h2 id="db2dDesignTitle">2D designs by status</h2></div>
+          <div class="up-card-head">
+            <h2 id="db2dDesignTitle">2D designs by status</h2>
+            <a class="up-card-action" id="db2dViewAll" href="./case_list.html" aria-describedby="db2dDesignTitle">View all</a>
+          </div>
           <div class="up-donut" id="db2dDesignDonut"></div>
         </section>
 
         <section class="up-card" aria-labelledby="db3dDesignTitle">
-          <div class="up-card-head"><h2 id="db3dDesignTitle">3D designs by status</h2></div>
+          <div class="up-card-head">
+            <h2 id="db3dDesignTitle">3D designs by status</h2>
+            <a class="up-card-action" id="db3dViewAll" href="./case_list.html" aria-describedby="db3dDesignTitle">View all</a>
+          </div>
           <div class="up-donut" id="db3dDesignDonut"></div>
         </section>
       </div>
 
       <div class="up-row-3">
         <section class="up-card" aria-labelledby="dbSlotsTitle">
-          <div class="up-card-head"><h2 id="dbSlotsTitle">Third-party files by STL slot</h2></div>
+          <div class="up-card-head"><h2 id="dbSlotsTitle">Extra slot 3D files by slot</h2></div>
           <ul class="up-slots" id="dbSlots"></ul>
           <p class="up-note" id="dbSlotsNote"></p>
         </section>
@@ -120,7 +129,7 @@
         <section class="up-card up-span-2" aria-labelledby="dbRecentTitle">
           <div class="up-card-head">
             <h2 id="dbRecentTitle">Recent cases</h2>
-            <a class="up-card-action" href="./case_list.html">View all</a>
+            <a class="up-card-action" id="dbRecentViewAll" href="./case_list.html" aria-describedby="dbRecentTitle">View all</a>
           </div>
           <div class="up-table-wrap">
             <table class="up-table">

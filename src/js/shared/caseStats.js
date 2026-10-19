@@ -44,12 +44,12 @@ export function needsAction(apiStatus) {
   return NEEDS_ACTION.has(normalizeStatus(apiStatus));
 }
 
-export const DESIGN_STATES = ["not_started", "pending", "in_progress", "done"];
+// Named after the case statuses (2D/3D design pending, drafted, approved).
 export const DESIGN_STATE_LABELS = {
   not_started: "—",
   pending: "Pending",
-  in_progress: "In progress",
-  done: "Done",
+  in_progress: "Drafted",
+  done: "Approved",
 };
 
 // How far the case is through its 2D or 3D design step: pending → drafted
@@ -127,7 +127,7 @@ export function caseStats(cases, username, now = Date.now()) {
     if (isOwnedBy(c, username)) stats.owned += 1;
     else stats.shared += 1;
     // Files, set by caseFiles.js once the case is checked: jaw STLs (SmartRPD
-    // 3D), extra-slot STLs (third-party 3D) and 2D design .txt files. Uploaded
+    // 3D), extra-slot STLs (Extra slot 3D) and 2D design .txt files. Uploaded
     // scans are the STLs.
     if (c.case_files == null) {
       stats.filesPending += 1;
@@ -147,9 +147,19 @@ export function caseStats(cases, username, now = Date.now()) {
   return stats;
 }
 
-export function designStateCounts(cases, step) {
-  const counts = Object.fromEntries(DESIGN_STATES.map((s) => [s, 0]));
-  for (const c of cases) counts[designState(c.new_status, step)] += 1;
+// How many cases sit at each status of a 2D or 3D design step right now, as
+// the case list shows them: "2D design pending" / "drafted" / "approved" (or
+// the 3D ones). Unlike designState, a case that has moved on (to 3D design or
+// In production, say) counts at none of them.
+export function designStatusCounts(cases, step) {
+  const counts = { pending: 0, drafted: 0, approved: 0 };
+  const prefix = `${step}_design_`;
+  for (const c of cases) {
+    const status = normalizeStatus(c.new_status);
+    if (!status.startsWith(prefix)) continue;
+    const key = status.slice(prefix.length);
+    if (key in counts) counts[key] += 1;
+  }
   return counts;
 }
 

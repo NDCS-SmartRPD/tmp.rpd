@@ -1,5 +1,5 @@
 // File counts for the profile and dashboard pages, per case: the jaw STLs
-// (SmartRPD 3D), the files in its four extra 3D slots (third-party 3D) and its
+// (SmartRPD 3D), the files in its four extra 3D slots (Extra slot 3D) and its
 // 2D design .txt files from /jawstruct/l2/getall; uploaded scans are the STLs.
 // The server has no count for these, so each case is checked with its own
 // requests, one case at a time (the backend 403s bursts). Results are kept per

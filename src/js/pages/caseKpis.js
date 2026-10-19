@@ -5,7 +5,7 @@
 import { TREND_PERIODS, kpiRows, unreadCaseIdsOf } from "../shared/kpiMetrics.js";
 import { fetchMyAlerts, loadMyCases } from "../shared/myCases.js";
 import { toast } from "../shared/toast.js";
-import { h, markUpdated, plural, requireUser, setText, setupPageChrome } from "../shared/userPages.js";
+import { NEEDS_ACTION_COLOR, STAGES, h, markUpdated, plural, requireUser, setText, setupPageChrome } from "../shared/userPages.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 // Sparkline teal, validated with the dataviz checks: unlike --primary (2.7:1)
@@ -14,6 +14,11 @@ const SPARK_COLOR = "#2c9a82";
 // The prototype's tone dots, a quiet hint of which metrics to watch; the
 // Category column carries the grouping in text.
 const TONE_COLORS = { neutral: "#94a3b8", good: "#10b981", warn: "#f59e0b", bad: "#f43f5e" };
+// Status rows instead wear their case list stage card's color, so In production
+// is the same blue here as there, and deadline rows the case list's due-date
+// bar colors (.cm-due-bar in css/case_list.css), so Overdue is black.
+const STAGE_COLORS = { ...Object.fromEntries(STAGES.map((s) => [s.key, s.color])), needsAction: NEEDS_ACTION_COLOR };
+const DUE_COLORS = { overdue: "#000000", due: "#ef4444", soon: "#2563eb" };
 const HIGHLIGHTS = ["all", "needsAction", "overdue", "unread"];
 
 const state = {
@@ -105,7 +110,7 @@ function metricRow(k, all) {
       h(
         "div",
         { class: "up-kpi-metric" },
-        h("span", { class: "up-dot", style: { background: TONE_COLORS[k.tone] }, "aria-hidden": "true" }),
+        h("span", { class: "up-dot", style: { background: STAGE_COLORS[k.stage] ?? DUE_COLORS[k.due] ?? TONE_COLORS[k.tone] }, "aria-hidden": "true" }),
         h("span", {}, k.label),
         k.device && h("span", { class: "up-tag", title: "Pins are saved in this browser" }, "This device"),
         k.unavailable && h("span", { class: "up-tag", title: "Needs a server total" }, "No data yet")

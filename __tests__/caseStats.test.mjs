@@ -8,7 +8,7 @@ import {
   createdSeries,
   createdWithin,
   designState,
-  designStateCounts,
+  designStatusCounts,
   needsAction,
   recentCases,
   slotLabel,
@@ -95,9 +95,19 @@ describe("caseStats", () => {
     expect(caseStats(files, "me", NOW)).toMatchObject({ jawStls: 3, extraStls: 2, scans: 5, designFiles: 2, filesPending: 1 });
   });
 
-  test("2D design states add up to the case count", () => {
-    const counts = designStateCounts(cases, "2d");
-    expect(counts).toEqual({ not_started: 2, pending: 0, in_progress: 1, done: 3 });
+  test("design status counts follow each case's current status, as on the case list", () => {
+    const list = [
+      { new_status: "2D design pending" },
+      { new_status: "2D Design Approved" },
+      { new_status: "2D design approved" },
+      { new_status: "3D design drafted" },
+      { new_status: "In production" }, // past both design steps: counted at neither
+      { new_status: "Completed" },
+      { new_status: null },
+      {},
+    ];
+    expect(designStatusCounts(list, "2d")).toEqual({ pending: 1, drafted: 0, approved: 2 });
+    expect(designStatusCounts(list, "3d")).toEqual({ pending: 0, drafted: 1, approved: 0 });
   });
 });
 

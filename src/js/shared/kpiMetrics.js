@@ -35,7 +35,11 @@ function isOpen(c) {
 
 // Rows in table order. `value` is null when there is no data source yet
 // (`unavailable`), or for unread updates until the alerts have loaded.
-// `needsDetails` marks values that depend on per-case status details.
+// `needsDetails` marks values that depend on per-case status details. `stage`
+// names the case list's stage card a status row belongs to (STATUS_GROUPS in
+// pages/caseManagement.js: 3D design approved is still preparation), and `due`
+// the case list's due-date bar a deadline row matches (dueDateIndicator there:
+// overdue, due today, due soon).
 export function kpiRows(cases, { username, days, now = Date.now(), pinnedIds = new Set(), unreadCaseIds = null } = {}) {
   const windows = Array.from({ length: TREND_PERIODS }, (_, i) => periodWindow(days, TREND_PERIODS - 1 - i, now));
   const [current, previous] = [windows.at(-1), windows.at(-2)];
@@ -77,15 +81,15 @@ export function kpiRows(cases, { username, days, now = Date.now(), pinnedIds = n
       tone: "good",
     }),
     row("updated", `Cases updated ${period}`, "Volume", updated),
-    row("preparation", "In preparation", "Status", s.preparation, details),
-    row("draft", "Draft cases", "Status", draft, details),
-    row("needsAction", "Needs action", "Status", s.needsAction, { ...details, tone: "warn" }),
-    row("ready", "Ready for production", "Status", ready, { ...details, tone: "warn" }),
-    row("production", "In production", "Status", s.delivery, details),
-    row("completed", "Completed cases", "Status", s.completed, { ...details, tone: "good" }),
-    row("dueToday", "Due today", "Deadlines", dueToday, { ...details, tone: "warn" }),
-    row("due7", "Due in the next 7 days", "Deadlines", s.dueSoon, details),
-    row("overdue", "Overdue cases", "Deadlines", s.overdue, { ...details, tone: "bad" }),
+    row("preparation", "In preparation", "Status", s.preparation, { ...details, stage: "preparation" }),
+    row("draft", "Draft cases", "Status", draft, { ...details, stage: "preparation" }),
+    row("needsAction", "Needs action", "Status", s.needsAction, { ...details, stage: "needsAction" }),
+    row("ready", "Ready for production", "Status", ready, { ...details, stage: "preparation" }),
+    row("production", "In production", "Status", s.delivery, { ...details, stage: "delivery" }),
+    row("completed", "Completed cases", "Status", s.completed, { ...details, stage: "completed" }),
+    row("dueToday", "Due today", "Deadlines", dueToday, { ...details, due: "due" }),
+    row("due7", "Due in the next 7 days", "Deadlines", s.dueSoon, { ...details, due: "soon" }),
+    row("overdue", "Overdue cases", "Deadlines", s.overdue, { ...details, due: "overdue" }),
     row("stale", `Stale cases (no update ${STALE_DAYS}d)`, "Risk", stale, { ...details, tone: "bad" }),
     row("noStatus", "Cases without a status", "Risk", s.unset - s.withoutDetails, details),
     row("upper", "Upper-jaw cases", "Anatomy", null, { unavailable: true }),

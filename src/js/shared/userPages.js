@@ -16,13 +16,13 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 
 // Stage colors are the case list's stat-card accents (.cm-stat-filter-*),
 // validated together as a categorical set; used by the profile's stage meters
-// and activity dots.
+// and activity dots, and the KPI page's status rows.
 export const STAGES = [
   { key: "preparation", label: "Preparation", color: "#d97706" },
   { key: "delivery", label: "Production", color: "#2563eb" },
   { key: "completed", label: "Completed", color: "#16a34a" },
 ];
-const NEEDS_ACTION_COLOR = "#f59e0b";
+export const NEEDS_ACTION_COLOR = "#f59e0b";
 const INVITE_COLOR = "#25735f"; // --primary-strong
 
 // Element builder: h("p", { class: "x" }, "text", child, …).
@@ -207,6 +207,7 @@ export function renderStageMeters(container, stats) {
 
 // Part-to-whole donut (≤ 6 segments, 2px surface gaps) with a legend that
 // carries every count and share, so no value depends on hovering the ring.
+// A segment's optional `note` follows its label and wraps as one piece.
 export function renderDonut(host, segments) {
   const total = segments.reduce((s, x) => s + x.count, 0);
   const r = 40;
@@ -245,7 +246,7 @@ export function renderDonut(host, segments) {
         "li",
         {},
         h("span", { class: "up-dot", style: { background: s.color }, "aria-hidden": "true" }),
-        h("span", { class: "up-legend-label" }, s.label),
+        h("span", { class: "up-legend-label" }, s.label, s.note && [" ", h("span", { class: "up-legend-note" }, s.note)]),
         h("span", { class: "up-legend-count" }, String(s.count)),
         h("span", { class: "up-legend-share" }, total ? `${((s.count / total) * 100).toFixed(1)}%` : "—")
       )

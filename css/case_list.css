@@ -778,6 +778,42 @@ button {
 }
 .cm-icon-btn:hover { background: var(--line-soft); }
 
+/* ============ dashboard filter bar ============ */
+/* Names the filter a dashboard "View all" link carried in (built by
+   caseManagement.js above #caseList). Shown at every width, since the stat
+   cards are hidden on phones, and hidden in create mode along with the table. */
+.cm-linked-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 6px 6px 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+.cm-linked-filter > .fa-filter { color: var(--primary-strong); }
+.cm-linked-filter-text { flex: 1; min-width: 0; }
+.cm-linked-filter-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--primary-strong);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cm-linked-filter-clear:hover { background: var(--primary-soft); }
+.cm-linked-filter-clear:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.cm-page.creating .cm-linked-filter { display: none; }
+
 /* ============ case table ============ */
 .cm-table-wrap {
   flex: 1;

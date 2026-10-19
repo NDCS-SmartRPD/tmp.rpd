@@ -118,6 +118,7 @@
 .up-card-action { color: var(--up-accent); font-size: 12px; font-weight: 600; text-decoration: none; white-space: nowrap; }
 .up-card-action:hover { text-decoration: underline; }
 .up-card-meta { color: var(--up-muted); font-size: 12px; }
+.up-card-head-end { display: flex; align-items: center; gap: 12px; }
 .up-note { margin-top: 12px; color: var(--up-muted); font-size: 11px; line-height: 1.5; }
 .up-empty { color: var(--up-faint); font-size: 12px; }
 .up-mono { font-family: var(--font-mono); font-size: 13px; }
@@ -303,7 +304,8 @@
 .up-legend li { display: flex; align-items: center; gap: 8px; }
 .up-legend .up-dot { width: 10px; height: 10px; }
 .up-legend-label { color: var(--up-ink-4); }
-.up-legend-count { margin-left: auto; padding-left: 12px; color: var(--up-faint); font-variant-numeric: tabular-nums; }
+.up-legend-note { color: var(--up-muted); font-size: 11px; white-space: nowrap; }
+.up-legend-count { margin-left: auto; padding-left: 6px; color: var(--up-faint); font-variant-numeric: tabular-nums; }
 .up-legend-share { width: 44px; text-align: right; font-weight: 700; color: var(--up-ink); font-variant-numeric: tabular-nums; }
 
 .up-tableview { margin-top: 8px; }
@@ -312,7 +314,7 @@
 .up-tableview tbody { display: block; max-height: 180px; overflow-y: auto; }
 .up-tableview thead, .up-tableview tbody tr { display: table; width: 100%; table-layout: fixed; }
 
-/* Third-party slots */
+/* Extra slot 3D files by slot */
 .up-slots { display: flex; flex-direction: column; gap: 12px; font-size: 12px; }
 .up-slot-head { display: flex; justify-content: space-between; margin-bottom: 4px; }
 .up-slot-head b { color: var(--up-ink-3); font-variant-numeric: tabular-nums; }

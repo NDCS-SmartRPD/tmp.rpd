@@ -69,6 +69,22 @@ describe("kpiRows — snapshot metrics", () => {
     expect(k.production.value).toBe(1);
   });
 
+  test("status rows name the case list stage they belong to", () => {
+    const stages = Object.fromEntries(Object.values(k).filter((r) => r.group === "Status").map((r) => [r.id, r.stage]));
+    expect(stages).toEqual({
+      preparation: "preparation",
+      draft: "preparation",
+      needsAction: "needsAction",
+      ready: "preparation",
+      production: "delivery",
+      completed: "completed",
+    });
+  });
+
+  test("deadline rows name the case list due-date bar they match", () => {
+    expect([k.dueToday.due, k.due7.due, k.overdue.due]).toEqual(["due", "soon", "overdue"]);
+  });
+
   test("deadlines skip completed and delivered cases", () => {
     expect(k.dueToday.value).toBe(1);
     expect(k.overdue.value).toBe(1);
