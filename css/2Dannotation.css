@@ -2750,14 +2750,6 @@ button.upload3d-row {
   box-shadow: 0 0 0 1px rgba(47, 144, 121, 0.45) inset;
 }
 
-/* Blocked by material rule (palatal A-P strap & bar on a full acrylic case). */
-.component-item.is-disabled {
-  opacity: 0.38;
-  cursor: not-allowed;
-  pointer-events: none;
-  filter: grayscale(1);
-}
-
 .component-icon {
   width: 42px;
   height: 42px;
@@ -2858,10 +2850,10 @@ button.upload3d-row {
   filter: url(#tint-mesh);
 }
 
-/* Mesh Flange keeps its native SVG texture/colors (no purple tint). */
+/* Mesh Flange: only its denture tooth draws here; its band joins the acrylic base layer. */
 .mesh-image.mesh-image-native {
-  -webkit-filter: none;
-  filter: none;
+  -webkit-filter: url(#flange-tooth-only);
+  filter: url(#flange-tooth-only);
 }
 
 /* RPD overlays and connectors: neutral gray (tune to match arch) */
@@ -2883,6 +2875,26 @@ button.upload3d-row {
 .palatal-plate-arch-image.is-acrylic {
   -webkit-filter: url(#tint-flange);
   filter: url(#tint-flange);
+}
+
+/* One acrylic base per arch: pink parts draw solid, then the layer fades once, so junctions
+   cannot double up. Opacity = the art's fill alpha (0.6), times the locked-tooth fade. */
+.acrylic-base-layer {
+  opacity: 0.6;
+  pointer-events: none;
+}
+.acrylic-base-layer.is-locked { opacity: 0.528; }
+.acrylic-base-solid {
+  -webkit-filter: url(#acrylic-close);
+  filter: url(#acrylic-close);
+}
+.acrylic-base-layer image.is-acrylic {
+  -webkit-filter: url(#acrylic-solid);
+  filter: url(#acrylic-solid);
+}
+.acrylic-base-layer image.acrylic-flange-band {
+  -webkit-filter: url(#acrylic-flange-band-solid);
+  filter: url(#acrylic-flange-band-solid);
 }
 
 .major-connector-image.is-separated {
@@ -3061,6 +3073,13 @@ button.upload3d-row {
   stroke: #1a0a10;
   stroke-width: 2;
 }
+
+/* Full acrylic: rests take the clasps' metal grey (#tint-rpd-gray), like the wire clasp. */
+.rest-placement-image.is-acrylic {
+  -webkit-filter: url(#tint-rpd-gray);
+  filter: url(#tint-rpd-gray);
+}
+.rest-placement-marker.is-acrylic { fill: #8a8a8a; }
 
 .rest-placement-lingual {
   fill: #00a896;
@@ -3813,22 +3832,6 @@ button.upload3d-row {
   right: 0;
   bottom: 0;
   border-bottom-right-radius: 100%;
-}
-
-/* A component the denture material forbids (e.g. metal mesh in full acrylic) stays in
-   place but dead, matching the catalog. */
-.tooth-quickpick-tile.is-disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  background: #f1f3f5;
-  color: var(--muted);
-  border-color: var(--line);
-}
-
-.tooth-quickpick-tile.is-disabled:hover {
-  background: #f1f3f5;
-  transform: none;
-  box-shadow: none;
 }
 
 .tooth-radial-option:hover {

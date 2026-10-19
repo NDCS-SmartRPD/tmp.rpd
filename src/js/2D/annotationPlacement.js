@@ -1,6 +1,7 @@
 import {
   ACTION_UPON_FAILURE,
   ASSEMBLY_REST_SUGGESTION_IDS,
+  componentLabel,
   canPlaceBallClasp,
   COMPONENT_BY_ID,
   getBarPlacementSurfaceForTooth,
@@ -143,7 +144,7 @@ export function placeSelectedComponentOnTooth(toothId, placementContext = null) 
   // the tooth body stores the assembly id itself as a bogus placement.
   if (ASSEMBLY_REST_SUGGESTION_IDS.has(selectedComponent.id)) {
     setMessage(
-      `For ${selectedComponent.label}, click a rest suggestion point (mesial or distal).`,
+      `For ${componentLabel(selectedComponent, state.jawMaterial)}, click a rest suggestion point (mesial or distal).`,
       true
     );
     return;
@@ -154,7 +155,7 @@ export function placeSelectedComponentOnTooth(toothId, placementContext = null) 
 
   if (isMajorConnectorComponent(selectedComponent)) {
     if (isMajorConnectorToothExcluded(selectedComponent.id, toothId)) {
-      setMessage(`${selectedComponent.label} is not supported on tooth ${toothId}.`, true);
+      setMessage(`${componentLabel(selectedComponent, state.jawMaterial)} is not supported on tooth ${toothId}.`, true);
       return;
     }
     const jaw = TOOTH_ORDER.upper.includes(toothId)
@@ -190,7 +191,7 @@ export function placeSelectedComponentOnTooth(toothId, placementContext = null) 
       if (isPalatalHoleMajorComponent(selectedComponent.id)) {
         state.archOverlayPalatalHoleActive = hasPalatalHolePlacementOnUpperArch(state.teeth);
       }
-      setMessage(`Removed ${selectedComponent.label} from tooth ${toothId}.`, false);
+      setMessage(`Removed ${componentLabel(selectedComponent, state.jawMaterial)} from tooth ${toothId}.`, false);
       return;
     }
 
@@ -213,7 +214,7 @@ export function placeSelectedComponentOnTooth(toothId, placementContext = null) 
       }
       addPlacement(tooth, selectedComponent.id, null);
       state.archOverlayPalatalHoleActive = true;
-      setMessage(`Placed ${selectedComponent.label} on tooth ${toothId}.`, false);
+      setMessage(`Placed ${componentLabel(selectedComponent, state.jawMaterial)} on tooth ${toothId}.`, false);
       return;
     }
 
@@ -225,14 +226,14 @@ export function placeSelectedComponentOnTooth(toothId, placementContext = null) 
         removePlacementsByComponentIds(tooth, majorIdsOnTooth);
       }
       addPlacement(tooth, selectedComponent.id, null);
-      setMessage(`Placed ${selectedComponent.label} on tooth ${toothId}.`, false);
+      setMessage(`Placed ${componentLabel(selectedComponent, state.jawMaterial)} on tooth ${toothId}.`, false);
       return;
     }
 
     const majorCriteria = assessPlacementCriteria(tooth, selectedComponent, COMPONENT_BY_ID);
     if (majorCriteria.pass) {
       addPlacement(tooth, selectedComponent.id, null);
-      setMessage(`Placed ${selectedComponent.label} on tooth ${toothId}.`, false);
+      setMessage(`Placed ${componentLabel(selectedComponent, state.jawMaterial)} on tooth ${toothId}.`, false);
       return;
     }
 
@@ -245,7 +246,7 @@ export function placeSelectedComponentOnTooth(toothId, placementContext = null) 
     if (majorFailure.actionUponFailure === ACTION_UPON_FAILURE.REMOVE_THEN_PLACE) {
       removePlacementsByComponentIds(tooth, majorFailure.conflictingComponents || []);
       addPlacement(tooth, selectedComponent.id, null);
-      setMessage(`Replaced prior major and placed ${selectedComponent.label} on tooth ${toothId}.`, false);
+      setMessage(`Replaced prior major and placed ${componentLabel(selectedComponent, state.jawMaterial)} on tooth ${toothId}.`, false);
     }
     return;
   }
@@ -275,21 +276,21 @@ export function placeSelectedComponentOnTooth(toothId, placementContext = null) 
       isRingClaspComponent(selectedComponent)
     ) {
       setMessage(
-        `For ${selectedComponent.label}, click a clasp suggestion point (mesial or distal, buccal or lingual).`,
+        `For ${componentLabel(selectedComponent, state.jawMaterial)}, click a clasp suggestion point (mesial or distal, buccal or lingual).`,
         true
       );
       return;
     }
     if (isBarComponent(selectedComponent)) {
-      setMessage(`For ${selectedComponent.label}, click a highlighted tooth near a mesh-bearing tooth.`, true);
+      setMessage(`For ${componentLabel(selectedComponent, state.jawMaterial)}, click a highlighted tooth near a mesh-bearing tooth.`, true);
       return;
     }
     if (isBallClaspComponent(selectedComponent)) {
-      setMessage(`For ${selectedComponent.label}, click one of the ball clasps shown between two teeth.`, true);
+      setMessage(`For ${componentLabel(selectedComponent, state.jawMaterial)}, click one of the ball clasps shown between two teeth.`, true);
       return;
     }
     setMessage(
-      `For ${selectedComponent.label}, click a rest suggestion point (mesial, distal, or lingual).`,
+      `For ${componentLabel(selectedComponent, state.jawMaterial)}, click a rest suggestion point (mesial, distal, or lingual).`,
       true
     );
     return;
@@ -319,7 +320,7 @@ export function placeSelectedComponentOnTooth(toothId, placementContext = null) 
       }
     }
     setMessage(
-      `Removed ${selectedComponent.label}${targetSurface ? ` (${targetSurface})` : ""} from tooth ${toothId}.`,
+      `Removed ${componentLabel(selectedComponent, state.jawMaterial)}${targetSurface ? ` (${targetSurface})` : ""} from tooth ${toothId}.`,
       false
     );
     return;
@@ -369,7 +370,7 @@ export function placeSelectedComponentOnTooth(toothId, placementContext = null) 
     autoPlaceDefaultReciprocatingElement(tooth, selectedComponent);
     extendMajorConnectorAfterDeliberatePlacement(toothId, selectedComponent);
     setMessage(
-      `Placed ${selectedComponent.label}${targetSurface ? ` (${targetSurface})` : ""} on tooth ${toothId}.`,
+      `Placed ${componentLabel(selectedComponent, state.jawMaterial)}${targetSurface ? ` (${targetSurface})` : ""} on tooth ${toothId}.`,
       false
     );
     return;
@@ -387,7 +388,7 @@ export function placeSelectedComponentOnTooth(toothId, placementContext = null) 
     autoPlaceDefaultReciprocatingElement(tooth, selectedComponent);
     extendMajorConnectorAfterDeliberatePlacement(toothId, selectedComponent);
     setMessage(
-      `Replaced conflict and placed ${selectedComponent.label}${targetSurface ? ` (${targetSurface})` : ""} on tooth ${toothId}.`,
+      `Replaced conflict and placed ${componentLabel(selectedComponent, state.jawMaterial)}${targetSurface ? ` (${targetSurface})` : ""} on tooth ${toothId}.`,
       false
     );
   }

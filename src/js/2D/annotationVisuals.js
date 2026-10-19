@@ -1,4 +1,5 @@
 import {
+  componentLabel,
   ASSEMBLY_REST_SUGGESTION_IDS,
   augmentTeethForPalatalBarConnectorNeighbors,
   BALL_CLASP_COMPONENT_ID,
@@ -439,7 +440,7 @@ function appendPlacedComponentMarkers(group, tooth, toothId, jaw) {
     if (!canRemoveComponentId(placement.componentId)) return;
     event.stopPropagation();
     removePlacement(tooth, placement.componentId, surface);
-    const label = COMPONENT_BY_ID.get(placement.componentId)?.label || placement.componentId;
+    const label = componentLabel(COMPONENT_BY_ID.get(placement.componentId), state.jawMaterial) || placement.componentId;
     setMessage(message || `Removed ${label} (${surface}) from tooth ${toothId}.`, false);
     renderJaw(jaw);
   };
@@ -479,7 +480,7 @@ function appendPlacedComponentMarkers(group, tooth, toothId, jaw) {
           ...centeredImageAttrs(assetHref, width, height),
           class: `rest-placement-image rest-placement-${surface}${
             placement.componentId === REST_CALIBRATION_COMPONENT_ID ? " is-placed-rest-seat" : ""
-          }`,
+          }${state.jawMaterial === 2 ? " is-acrylic" : ""}`,
           "data-surface": surface,
           "data-component-id": placement.componentId,
         })
@@ -497,7 +498,7 @@ function appendPlacedComponentMarkers(group, tooth, toothId, jaw) {
         r: String(radius),
         class: `rest-placement-marker rest-placement-${surface}${
           placement.componentId === REST_CALIBRATION_COMPONENT_ID ? " is-placed-rest-seat" : ""
-        }`,
+        }${state.jawMaterial === 2 ? " is-acrylic" : ""}`,
         "data-surface": surface,
         "data-component-id": placement.componentId,
       });

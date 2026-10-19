@@ -830,7 +830,7 @@ export const BALL_CLASP_COMPONENT_ID = "ball-clasp";
 /** A tooth's ball clasp is always at its mesial contact; 11's and 41's are the midlines. */
 const BALL_CLASP_SURFACE = "mesial";
 
-const BALL_CLASP_ASSET_BASE = "../../assets/RPD_Component/acrylic_clasps";
+const BALL_CLASP_ASSET_BASE = "../../assets/RPD_Component/acrylic_clasps/Ball_Clasp";
 
 /** Art px -> arch units: sizes the ball and wire against the teeth as in the reference design. */
 const BALL_CLASP_RENDER_SCALE = 0.42;
