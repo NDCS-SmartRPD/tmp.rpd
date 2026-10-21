@@ -6,6 +6,7 @@ import { openSelectMenu, closeSelectMenu, isSelectMenuOpenFor } from "../shared/
 import { logApi, statusLabel, STATUS_LABELS } from "../shared/apiLog.js";
 import { reportHtmlToDocxBytes } from "../shared/accessibility.js";
 import { setupAppSidebar } from "../shared/appSidebar.js";
+import { setupUserProfileMenu } from "../shared/userProfileMenu.js";
 import { buildReportHtml } from "../2D/noticeboard.js";
 import { fetchJawStruct } from "../2D/jawStructApi.js";
 import { decodeJawStructResponse, decodedJawMaterial } from "../2D/jawStructCodec.js";
@@ -41,6 +42,7 @@ import { normalizeImageFile } from "../shared/imageFiles.js";
 import { recordCollaborators, reconcileCollaborators } from "../shared/userSuggest.js";
 import { confirmRemoveUserFromCase } from "../shared/caseRoles.js";
 import { createCaseHistory } from "../shared/caseHistory.js";
+import { caseListFilterText, matchesCaseListFilter, parseCaseListFilter } from "../shared/caseListFilter.js";
 
 // Per-user cache of the last case list, painted instantly while
 // /case/user/findall/get is in flight. Keyed by uuid so lists never cross accounts.
@@ -108,6 +110,11 @@ STATUS_GROUPS.needs_action = PENDING_ACTION_STATUS_VALUES;
 // Which stat card is active ("all" = no stage filter). Toggled by clicking a
 // card; a second click on the active card clears back to "all".
 let activeStatusFilter = "all";
+
+// The filter a dashboard "View all" link carries in the URL
+// (shared/caseListFilter.js), read on load; null when there is none or once
+// it has been cleared.
+let linkedFilter = null;
 
 // The stage a case belongs to, or null if it matches none (shouldn't happen
 // given the groups above cover every status).
@@ -284,7 +291,8 @@ async function deleteCaseById(caseId, { skipConfirm = false } = {}) {
         c.id !== caseIdForApi &&
         c.case_int_id !== caseIdForApi
     );
-    populateTable(currentCases);
+    // Through the filters, so a search or a dashboard filter stays applied.
+    applyClientFilters();
 
     if (
       window.selectedCaseId === caseId ||
@@ -1042,6 +1050,7 @@ function populateTable(cases) {
   const body = document.getElementById("caseTableBody");
   const countBadge = document.getElementById("caseCountBadge");
   if (countBadge) countBadge.textContent = String(cases?.length || 0);
+  syncLinkedFilterBar(cases?.length || 0);
   // Reflect the current match count in the search bar (visible only while a
   // name/date/status search is active).
   updateSearchResultCount(cases?.length || 0);
@@ -1522,6 +1531,7 @@ function applyClientFilters() {
   const q = (mobileSearch?.value || searchInput?.value || "").trim().toLowerCase();
   const dateVal = dateInput?.value || "";
   const todayFlag = !!todayOnly?.checked;
+  const username = getLoggedInUser()?.username;
 
   const today = new Date();
   const base = currentCases.filter((item) => {
@@ -1552,10 +1562,47 @@ function applyClientFilters() {
       createdDate.getDate() === today.getDate()
     );
 
-    return matchName && matchDate && matchToday;
+    return matchName && matchDate && matchToday && matchesCaseListFilter(linkedFilter, item, username);
   });
 
   populateTable(base);
+}
+
+// The bar naming a dashboard filter, above the table at every width (the stat
+// cards are hidden on phones). Built here so both list pages get it.
+function setupLinkedFilterBar() {
+  const list = document.getElementById("caseList");
+  if (!linkedFilter || !list) return;
+  const bar = document.createElement("div");
+  bar.className = "cm-linked-filter";
+  bar.id = "linkedFilterBar";
+  bar.setAttribute("role", "status");
+  bar.innerHTML =
+    '<i class="fa fa-filter" aria-hidden="true"></i>' +
+    '<span class="cm-linked-filter-text" id="linkedFilterText"></span>' +
+    '<button type="button" class="cm-linked-filter-clear" id="linkedFilterClear">' +
+    '<i class="fa fa-xmark" aria-hidden="true"></i><span>Clear</span></button>';
+  list.before(bar);
+  bar.querySelector("#linkedFilterClear").addEventListener("click", () => {
+    dropLinkedFilter();
+    applyClientFilters();
+  });
+}
+
+// "Showing 12 cases from your dashboard: 2D design pending, drafted or approved".
+function syncLinkedFilterBar(count) {
+  const text = document.getElementById("linkedFilterText");
+  if (!linkedFilter || !text) return;
+  text.textContent = `Showing ${count} ${count === 1 ? "case" : "cases"} from your dashboard: ${caseListFilterText(linkedFilter)}`;
+}
+
+// Forgets the dashboard filter and takes it out of the URL, so a reload doesn't
+// bring it back.
+function dropLinkedFilter() {
+  if (!linkedFilter) return;
+  linkedFilter = null;
+  document.getElementById("linkedFilterBar")?.remove();
+  history.replaceState(history.state, "", window.location.pathname + window.location.hash);
 }
 
 // Counts cover the WHOLE list and don't shrink as you filter, so the cards stay
@@ -1596,10 +1643,11 @@ function syncStatFilterActiveState() {
 }
 
 // Selects the card's stage, or toggles back to "all" when the active card is
-// clicked again. "All Cases" always clears.
+// clicked again. "All Cases" always clears, the dashboard filter too.
 function applyStatFilter(group) {
   if (group === "all") {
     activeStatusFilter = "all";
+    dropLinkedFilter();
   } else {
     activeStatusFilter = activeStatusFilter === group ? "all" : group;
   }
@@ -2546,11 +2594,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       const onAdminPage = document.body.dataset.adminPage === "1";
       const admin = Number(me.isAdmin) === 1;
       // Relative to the CURRENT page: case_list.html is in src/pages/ and
-      // admin_case_list.html in src/pages/admin/, one directory apart.
-      if (admin && !onAdminPage) { window.location.replace("admin/admin_case_list.html"); return; }
-      if (!admin && onAdminPage) { window.location.replace("../case_list.html"); return; }
+      // admin_case_list.html in src/pages/admin/, one directory apart. The query
+      // goes along, so a dashboard "View all" filter survives the hop.
+      const query = window.location.search;
+      if (admin && !onAdminPage) { window.location.replace(`admin/admin_case_list.html${query}`); return; }
+      if (!admin && onAdminPage) { window.location.replace(`../case_list.html${query}`); return; }
     }
   }
+
+  // A dashboard "View all" link's filter, applied from the first paint.
+  linkedFilter = parseCaseListFilter(window.location.search);
+  setupLinkedFilterBar();
 
   // Instant paint FIRST, before any other setup or the network call, so the table
   // is never blank while /case/user/findall/get is in flight.
@@ -2579,6 +2633,34 @@ document.addEventListener("DOMContentLoaded", async () => {
   // (src/pages/admin/) than the normal case_list.html (src/pages/).
   const _inAdminDir = /\/admin\//.test(window.location.pathname);
   setupAppSidebar({ indexHref: _inAdminDir ? "../../../index.html" : "../../index.html" });
+  setupUserProfileMenu();
+
+  // Wire every logout affordance (the profile menu's Logout here, and the admin
+  // page's user-chip item + mobile header button, all carry class .logout).
+  // Before the case fetch, so logging out still works if the list fails to load.
+  const handleLogout = async () => {
+    const confirmed = await confirmModal({
+      title: "Log out?",
+      message: "You'll need to sign in again to access your cases.",
+      confirmText: "Log out",
+      cancelText: "Cancel",
+      variant: "info",
+    });
+    if (!confirmed) return;
+    // Drop the cached case list (compute the key while the user is still known)
+    // so the next account doesn't briefly see this one's list on instant paint.
+    const cacheKey = caseListCacheKey();
+    if (cacheKey) { try { localStorage.removeItem(cacheKey); } catch { /* ignore */ } }
+    localStorage.removeItem("loggedInUser");
+    // admin_case_list.html is one directory deeper (src/pages/admin/) than the
+    // normal case_list.html (src/pages/); index.html sits at the web root.
+    window.location.href = /\/admin\//.test(window.location.pathname)
+      ? "../../../index.html"
+      : "../../index.html";
+  };
+  document.querySelectorAll(".logout").forEach((btn) =>
+    btn.addEventListener("click", handleLogout)
+  );
 
   updateThumbnail();
   const cases = await fetchCases();
@@ -2694,32 +2776,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     // No reload-on-becoming-visible: the camera and the file picker HIDE the page
     // on Android, so returning with a photo fired it and wiped the open dialog
     // along with the capture. The refresh button above is the only way in.
-
-    // Wire every logout affordance (the user-chip dropdown item + the
-    // mobile-only header logout button both carry class .logout).
-    const handleLogout = async () => {
-      const confirmed = await confirmModal({
-        title: "Log out?",
-        message: "You'll need to sign in again to access your cases.",
-        confirmText: "Log out",
-        cancelText: "Cancel",
-        variant: "info",
-      });
-      if (!confirmed) return;
-      // Drop the cached case list (compute the key while the user is still known)
-      // so the next account doesn't briefly see this one's list on instant paint.
-      const cacheKey = caseListCacheKey();
-      if (cacheKey) { try { localStorage.removeItem(cacheKey); } catch { /* ignore */ } }
-      localStorage.removeItem("loggedInUser");
-      // admin_case_list.html is one directory deeper (src/pages/admin/) than the
-      // normal case_list.html (src/pages/); index.html sits at the web root.
-      window.location.href = /\/admin\//.test(window.location.pathname)
-        ? "../../../index.html"
-        : "../../index.html";
-    };
-    document.querySelectorAll(".logout").forEach((btn) =>
-      btn.addEventListener("click", handleLogout)
-    );
 
     const headWrap = document.querySelector(".table-head-wrapper");
     const bodyWrap = document.querySelector(".table-body-wrapper");
@@ -3171,7 +3227,8 @@ if (filterSel) filterSel.addEventListener("change", () => applyClientFilters());
       }
 
       caseObj.case_id = newCaseName;
-      populateTable(currentCases);
+      // Through the filters, so a search or a dashboard filter stays applied.
+      applyClientFilters();
       document.getElementById("caseNameDisplay").textContent = newCaseName;
 
       const caseListItems = document.querySelectorAll(".case-list-item");

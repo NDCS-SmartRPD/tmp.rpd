@@ -15,6 +15,9 @@ export function currentPageId(pathname = window.location.pathname) {
   if (/^ThreeDViewer/i.test(file)) return "viewer_3d";
   if (/^AnnotationHistory/i.test(file)) return "annotation_history";
   if (/^VersionHistory/i.test(file)) return "version_history";
+  if (/^profile/i.test(file)) return "profile";
+  if (/^my_dashboard/i.test(file)) return "my_dashboard";
+  if (/^case_kpis/i.test(file)) return "case_kpis";
   return "login";
 }
 

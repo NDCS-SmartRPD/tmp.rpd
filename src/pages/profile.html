@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>My Profile</title>
+    <link rel="icon" href="../../assets/profile.png" type="image/png" />
+    <link rel="stylesheet" href="../../vendor/manrope/manrope.css" />
+    <link rel="stylesheet" href="../../css/tokens.css" />
+    <link rel="stylesheet" href="../../vendor/font-awesome/css/all.min.css" />
+    <link rel="stylesheet" href="../../css/toast.css" />
+    <link rel="stylesheet" href="../../css/user_pages.css" />
+    <link rel="stylesheet" href="../../css/app-shell.css" />
+  </head>
+  <body class="up-body">
+
+    <header class="up-appbar">
+      <button type="button" class="up-menu-btn" id="appbarMenuBtn" aria-label="Menu" title="Menu">
+        <i class="fa fa-bars" aria-hidden="true"></i>
+      </button>
+      <nav class="up-nav" aria-label="Pages">
+        <a href="./case_list.html">Cases</a>
+        <a href="./profile.html" aria-current="page">Profile</a>
+        <a href="./my_dashboard.html">Dashboard</a>
+        <a href="./case_kpis.html">KPIs</a>
+      </nav>
+      <span class="up-updated">Last updated <b id="lastUpdated">—</b></span>
+      <a class="up-appbar-avatar" id="appbarAvatar" href="./profile.html" title="View my profile" aria-label="View my profile">?</a>
+    </header>
+
+    <main class="up-main">
+      <section class="up-card up-cover" aria-labelledby="pfName">
+        <div class="up-cover-banner"></div>
+        <div class="up-cover-body">
+          <div class="up-cover-avatar"><span class="up-initials-lg" id="pfInitials" aria-hidden="true">?</span></div>
+          <div class="up-cover-who">
+            <h1 id="pfName">—</h1>
+            <p id="pfSummary">Loading…</p>
+          </div>
+          <div class="up-cover-actions">
+            <a class="up-btn" href="./my_dashboard.html">View dashboard</a>
+            <button type="button" class="up-btn up-btn-primary" data-change-password>Change password</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="up-cols">
+        <div class="up-col">
+          <section class="up-card" aria-labelledby="pfDetailsTitle">
+            <div class="up-card-head"><h2 id="pfDetailsTitle">Account details</h2></div>
+            <dl class="up-fields" id="pfDetails"></dl>
+          </section>
+
+          <section class="up-card" aria-labelledby="pfCollabTitle">
+            <div class="up-card-head">
+              <h2 id="pfCollabTitle">Collaborators</h2>
+              <span class="up-card-meta" id="pfCollabCount"></span>
+            </div>
+            <ul class="up-people" id="pfCollaborators"></ul>
+          </section>
+
+          <section class="up-card" aria-labelledby="pfActivityTitle">
+            <div class="up-card-head"><h2 id="pfActivityTitle">Recent activity</h2></div>
+            <ol class="up-activity" id="pfActivity"><li class="up-empty">Loading…</li></ol>
+          </section>
+        </div>
+
+        <div class="up-col">
+          <section class="up-card" aria-labelledby="pfContribTitle">
+            <div class="up-card-head"><h2 id="pfContribTitle">My contributions</h2></div>
+            <dl class="up-contrib">
+              <div><dd id="pfScans">…</dd><dt>Scans</dt></div>
+              <div><dd id="pf2dDesigns">…</dd><dt>2D designs</dt></div>
+              <div><dd id="pfSmartRpd3d">…</dd><dt>SmartRPD 3D</dt></div>
+              <div><dd id="pfThirdParty">…</dd><dt>Extra slot 3D</dt></div>
+            </dl>
+          </section>
+
+          <section class="up-card" aria-labelledby="pfCaseActivityTitle">
+            <div class="up-card-head">
+              <h2 id="pfCaseActivityTitle">Case activity</h2>
+              <a class="up-card-action" href="./case_list.html">View cases</a>
+            </div>
+            <dl class="up-meter">
+              <div class="up-meter-total"><dt>Cases you can open</dt><dd id="pfTotal">…</dd></div>
+            </dl>
+            <div class="up-meter up-meter-stages" id="pfStageMeters"></div>
+            <p class="up-note" id="pfCaseNote"></p>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <aside id="appSidebar" class="app-sidebar is-hidden" aria-hidden="true" aria-label="Navigation">
+      <div class="app-sidebar-backdrop" data-sidebar-close></div>
+      <nav class="app-sidebar-panel" role="navigation">
+        <header class="app-sidebar-header">
+          <img class="app-sidebar-brand-logo" src="../../assets/profile.png" alt="" />
+          <span class="app-sidebar-title">SMARTRPD</span>
+          <span class="app-sidebar-version">v2.0</span>
+        </header>
+        <ul id="appSidebarList" class="app-sidebar-list">
+          <!-- Admin-only (unhidden by appSidebar.js when loggedInUser.isAdmin === 1;
+               the server re-checks is_admin on every admin endpoint anyway). -->
+          <li id="sidebarAdminUsersItem" hidden>
+            <button type="button" id="sidebarAdminUsersBtn" class="app-sidebar-item">
+              <i class="fa fa-users-gear app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>User Management</span>
+            </button>
+          </li>
+          <li id="sidebarMachineIdItem" hidden>
+            <button type="button" id="sidebarMachineIdBtn" class="app-sidebar-item">
+              <i class="fa fa-desktop app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Machine ID Management</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarChangePasswordBtn" class="app-sidebar-item">
+              <i class="fa fa-key app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Change Account Password</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarLogoutBtn" class="app-sidebar-item">
+              <i class="fa fa-right-from-bracket app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Logout</span>
+            </button>
+          </li>
+          <li><hr class="app-sidebar-separator" /></li>
+          <li>
+            <button type="button" id="sidebarHelpBtn" class="app-sidebar-item">
+              <i class="fa fa-circle-info app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Help</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarReportIssueBtn" class="app-sidebar-item">
+              <i class="fa fa-bug app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Report Issue</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarFeedbackBtn" class="app-sidebar-item">
+              <i class="fa fa-comment-dots app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Feedback</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarAboutBtn" class="app-sidebar-item">
+              <i class="fa-regular fa-square-caret-right app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>About</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarLanguageBtn" class="app-sidebar-item" aria-label="Language: English">
+              <i class="fa fa-globe app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>English</span>
+            </button>
+          </li>
+        </ul>
+      </nav>
+    </aside>
+
+    <script type="module" src="../js/pages/profile.js"></script>
+  </body>
+</html>

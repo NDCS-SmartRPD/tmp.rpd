@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>My Dashboard</title>
+    <link rel="icon" href="../../assets/profile.png" type="image/png" />
+    <link rel="stylesheet" href="../../vendor/manrope/manrope.css" />
+    <link rel="stylesheet" href="../../css/tokens.css" />
+    <link rel="stylesheet" href="../../vendor/font-awesome/css/all.min.css" />
+    <link rel="stylesheet" href="../../css/toast.css" />
+    <link rel="stylesheet" href="../../css/user_pages.css" />
+    <link rel="stylesheet" href="../../css/app-shell.css" />
+  </head>
+  <body class="up-body">
+
+    <header class="up-appbar">
+      <button type="button" class="up-menu-btn" id="appbarMenuBtn" aria-label="Menu" title="Menu">
+        <i class="fa fa-bars" aria-hidden="true"></i>
+      </button>
+      <nav class="up-nav" aria-label="Pages">
+        <a href="./case_list.html">Cases</a>
+        <a href="./profile.html">Profile</a>
+        <a href="./my_dashboard.html" aria-current="page">Dashboard</a>
+        <a href="./case_kpis.html">KPIs</a>
+      </nav>
+      <span class="up-updated">Last updated <b id="lastUpdated">—</b></span>
+      <a class="up-appbar-avatar" id="appbarAvatar" href="./profile.html" title="View my profile" aria-label="View my profile">?</a>
+    </header>
+
+    <main class="up-main">
+      <section class="up-card" aria-labelledby="dbName">
+        <div class="up-summary">
+          <div class="up-summary-avatar"><span class="up-initials-lg" id="dbInitials" aria-hidden="true">?</span></div>
+          <div>
+            <h1 id="dbName">—</h1>
+            <p id="dbRole"></p>
+            <a class="up-summary-link" href="./profile.html">View my profile ›</a>
+          </div>
+          <!-- One filter row scopes every card below. -->
+          <div class="up-filters">
+            <label class="up-filter">
+              <span>Period</span>
+              <select id="dbPeriod">
+                <option value="7">Last 7 days</option>
+                <option value="30">Last 30 days</option>
+                <option value="90">Last 90 days</option>
+                <option value="all" selected>All time</option>
+              </select>
+            </label>
+            <label class="up-filter">
+              <span>Cases</span>
+              <select id="dbScope">
+                <option value="all" selected>All</option>
+                <option value="owned">Owned by me</option>
+                <option value="shared">Shared with me</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <div class="up-kpis">
+        <section class="up-card up-kpi">
+          <p class="up-kpi-label">Uploaded scans</p>
+          <p class="up-kpi-value" id="dbScans">…</p>
+          <p class="up-kpi-delta" id="dbScansDelta"></p>
+        </section>
+        <section class="up-card up-kpi">
+          <p class="up-kpi-label">2D designs</p>
+          <p class="up-kpi-value" id="db2d">…</p>
+          <p class="up-kpi-delta" id="db2dDelta"></p>
+        </section>
+        <section class="up-card up-kpi">
+          <p class="up-kpi-label">SmartRPD 3D files</p>
+          <p class="up-kpi-value" id="db3d">…</p>
+          <p class="up-kpi-delta" id="db3dDelta"></p>
+        </section>
+        <section class="up-card up-kpi">
+          <p class="up-kpi-label">Extra slot 3D files</p>
+          <p class="up-kpi-value" id="dbThird">…</p>
+          <p class="up-kpi-delta" id="dbThirdDelta"></p>
+        </section>
+      </div>
+
+      <div class="up-row-3">
+        <section class="up-card" aria-labelledby="dbCreatedTitle">
+          <div class="up-card-head">
+            <h2 id="dbCreatedTitle">Cases created</h2>
+            <span class="up-card-head-end">
+              <span class="up-card-meta" id="dbCreatedSub">Per day</span>
+              <a class="up-card-action" id="dbCreatedViewAll" href="./case_list.html" aria-describedby="dbCreatedTitle">View all</a>
+            </span>
+          </div>
+          <div class="up-chart" id="dbCreatedChart"></div>
+          <details class="up-tableview">
+            <summary>Show as table</summary>
+            <table class="up-table">
+              <thead><tr><th scope="col" id="dbCreatedUnit">Day</th><th scope="col" class="up-num">Cases</th></tr></thead>
+              <tbody id="dbCreatedTable"></tbody>
+            </table>
+          </details>
+        </section>
+
+        <section class="up-card" aria-labelledby="db2dDesignTitle">
+          <div class="up-card-head">
+            <h2 id="db2dDesignTitle">2D designs by status</h2>
+            <a class="up-card-action" id="db2dViewAll" href="./case_list.html" aria-describedby="db2dDesignTitle">View all</a>
+          </div>
+          <div class="up-donut" id="db2dDesignDonut"></div>
+        </section>
+
+        <section class="up-card" aria-labelledby="db3dDesignTitle">
+          <div class="up-card-head">
+            <h2 id="db3dDesignTitle">3D designs by status</h2>
+            <a class="up-card-action" id="db3dViewAll" href="./case_list.html" aria-describedby="db3dDesignTitle">View all</a>
+          </div>
+          <div class="up-donut" id="db3dDesignDonut"></div>
+        </section>
+      </div>
+
+      <div class="up-row-3">
+        <section class="up-card" aria-labelledby="dbSlotsTitle">
+          <div class="up-card-head"><h2 id="dbSlotsTitle">Extra slot 3D files by slot</h2></div>
+          <ul class="up-slots" id="dbSlots"></ul>
+          <p class="up-note" id="dbSlotsNote"></p>
+        </section>
+
+        <section class="up-card up-span-2" aria-labelledby="dbRecentTitle">
+          <div class="up-card-head">
+            <h2 id="dbRecentTitle">Recent cases</h2>
+            <a class="up-card-action" id="dbRecentViewAll" href="./case_list.html" aria-describedby="dbRecentTitle">View all</a>
+          </div>
+          <div class="up-table-wrap">
+            <table class="up-table">
+              <thead>
+                <tr><th scope="col">Case</th><th scope="col">Owner</th><th scope="col">Created</th><th scope="col">2D design</th><th scope="col">3D design</th></tr>
+              </thead>
+              <tbody id="dbRecentCases"><tr><td colspan="5" class="up-empty">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <aside id="appSidebar" class="app-sidebar is-hidden" aria-hidden="true" aria-label="Navigation">
+      <div class="app-sidebar-backdrop" data-sidebar-close></div>
+      <nav class="app-sidebar-panel" role="navigation">
+        <header class="app-sidebar-header">
+          <img class="app-sidebar-brand-logo" src="../../assets/profile.png" alt="" />
+          <span class="app-sidebar-title">SMARTRPD</span>
+          <span class="app-sidebar-version">v2.0</span>
+        </header>
+        <ul id="appSidebarList" class="app-sidebar-list">
+          <!-- Admin-only (unhidden by appSidebar.js when loggedInUser.isAdmin === 1;
+               the server re-checks is_admin on every admin endpoint anyway). -->
+          <li id="sidebarAdminUsersItem" hidden>
+            <button type="button" id="sidebarAdminUsersBtn" class="app-sidebar-item">
+              <i class="fa fa-users-gear app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>User Management</span>
+            </button>
+          </li>
+          <li id="sidebarMachineIdItem" hidden>
+            <button type="button" id="sidebarMachineIdBtn" class="app-sidebar-item">
+              <i class="fa fa-desktop app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Machine ID Management</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarChangePasswordBtn" class="app-sidebar-item">
+              <i class="fa fa-key app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Change Account Password</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarLogoutBtn" class="app-sidebar-item">
+              <i class="fa fa-right-from-bracket app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Logout</span>
+            </button>
+          </li>
+          <li><hr class="app-sidebar-separator" /></li>
+          <li>
+            <button type="button" id="sidebarHelpBtn" class="app-sidebar-item">
+              <i class="fa fa-circle-info app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Help</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarReportIssueBtn" class="app-sidebar-item">
+              <i class="fa fa-bug app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Report Issue</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarFeedbackBtn" class="app-sidebar-item">
+              <i class="fa fa-comment-dots app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>Feedback</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarAboutBtn" class="app-sidebar-item">
+              <i class="fa-regular fa-square-caret-right app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>About</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" id="sidebarLanguageBtn" class="app-sidebar-item" aria-label="Language: English">
+              <i class="fa fa-globe app-sidebar-item-icon" aria-hidden="true"></i>
+              <span>English</span>
+            </button>
+          </li>
+        </ul>
+      </nav>
+    </aside>
+
+    <script type="module" src="../js/pages/myDashboard.js"></script>
+  </body>
+</html>
