@@ -7,6 +7,12 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TrackballControls } from "three/examples/jsm/controls/TrackballControls.js";
 
 import { STLMeshLoader } from "./STLMeshLoader.js";
+import { PLYLoader } from "three/examples/jsm/loaders/PLYLoader.js";
+import {
+  binaryStringToArrayBuffer,
+  isSupportedMeshFile,
+  meshFileKind,
+} from "./meshFileSupport.js";
 
 // Import the OFFLoader class
 import { OFFLoader } from "./OFFLoader.js";
@@ -5517,7 +5523,7 @@ function removeViewerLoadingScreen() {
 
   // Shared by the initial load and by an upload, which renders the bytes it just
   // sent rather than asking for them back — as preview3D's renderExtraStl does.
-  function addDesignSlotMesh(slot, filename, binarySTL) {
+  function addDesignSlotMesh(slot, filename, binaryMesh) {
     // Re-uploading a slot replaces what was there.
     const previous = designSlotMeshes.findIndex(
       (mesh) => mesh.userData?.designSlot === slot
@@ -5551,14 +5557,31 @@ function removeViewerLoadingScreen() {
     // with the same name.
     const slotFilename = `Slot ${slot}: ${filename || "3D file"}`;
 
-    const stlLoader = new STLMeshLoader(slotMaterial);
-    const [mesh, meshMaterials] = stlLoader.load(binarySTL, undercutForSlot);
+    const kind = meshFileKind(filename) || "stl";
+    let mesh;
+    let meshMaterials;
+    if (kind === "ply") {
+      const geometry = new PLYLoader().parse(binaryStringToArrayBuffer(binaryMesh));
+      geometry.computeVertexNormals();
+      const embeddedColors = Boolean(geometry.getAttribute("color"));
+      slotMaterial.vertexColors = embeddedColors;
+      mesh = new THREE.Mesh(geometry, slotMaterial);
+      meshMaterials = [geometry, geometry, embeddedColors ? geometry : null];
+      mesh.userData.embeddedHeatmap = embeddedColors;
+      if (!FRAMEWORK_SLOTS.has(slot) && embeddedColors) {
+        mesh.userData.undercutGeometry = geometry;
+      }
+    } else {
+      const stlLoader = new STLMeshLoader(slotMaterial);
+      [mesh, meshMaterials] = stlLoader.load(binaryMesh, undercutForSlot);
+    }
     all_mesh_mat[slotFilename] = meshMaterials.slice();
 
     mesh.name = slotFilename;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.userData = {
+      ...mesh.userData,
       jaw_type: isLower ? "lower" : "upper",
       archLabel: isLower ? "Lower Arch" : "Upper Arch",
       // Marks this as a design-slot mesh and carries which slot it came from, so
@@ -5770,6 +5793,7 @@ function removeViewerLoadingScreen() {
     if (FRAMEWORK_SLOTS.has(slot)) return null; // framework slots carry no undercut
     const mesh = designSlotMeshes.find((m) => m.userData?.designSlot === slot);
     if (!mesh) return null;
+    if (mesh.userData.undercutGeometry) return Promise.resolve(mesh.userData.undercutGeometry);
     if (mesh.userData.undercutSurveyPromise) return mesh.userData.undercutSurveyPromise;
 
     const jawKey = mesh.userData?.jaw_type === "lower" ? "lower" : "upper";
@@ -6191,8 +6215,8 @@ function removeViewerLoadingScreen() {
   // picker and drag-and-drop, which each just hand it a File.
   async function uploadFileToSlot(file, slot, statusEl) {
     if (!file) return;
-    if (!/\.stl$/i.test(file.name)) {
-      statusEl.textContent = "Only .stl files are supported.";
+    if (!isSupportedMeshFile(file.name)) {
+      statusEl.textContent = "Only .stl and .ply files are supported.";
       return;
     }
 
@@ -6248,7 +6272,7 @@ function removeViewerLoadingScreen() {
   async function pickAndUploadSlot(slot, statusEl) {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".stl";
+    input.accept = ".stl,.ply";
     input.hidden = true;
     document.body.appendChild(input);
     const file = await new Promise((resolve) => {
@@ -6259,7 +6283,7 @@ function removeViewerLoadingScreen() {
     await uploadFileToSlot(file, slot, statusEl);
   }
 
-  // Lets a tile take a dragged-in STL, not just the file picker. Same guard as
+  // Lets a tile take a dragged-in STL or PLY, not just the file picker. Same guard as
   // the click path: a filled or busy slot refuses the drop.
   function wireSlotDropTarget(wrap, slot, statusEl) {
     const canAcceptDrop = () =>
@@ -6747,7 +6771,7 @@ function removeViewerLoadingScreen() {
           const slotItem = Array.isArray(result) ? result[0] : result;
 
           if (!slotItem || !slotItem.data) {
-            console.log(`❌ Slot ${slot}: No STL data found.`);
+            console.log(`❌ Slot ${slot}: No 3D mesh data found.`);
             continue;
           }
 
@@ -6769,7 +6793,7 @@ function removeViewerLoadingScreen() {
           const surveyPromise = ensureSlotUndercutGeometry(slot, slotItem.data);
           enableDefaultSlotUndercut(slot, mesh, surveyPromise);
 
-          console.log(`✅ Loaded STL from slot ${slot}`);
+          console.log(`✅ Loaded 3D mesh from slot ${slot}`);
           anyLoaded = true;
         } catch (error) {
           console.warn(`⚠️ Slot ${slot} failed:`, error.message || error);
@@ -6801,8 +6825,8 @@ function removeViewerLoadingScreen() {
     if (!silent) {
       alert(
         anyLoaded
-          ? "✅ STL loading completed."
-          : "❌ No STL files found in slots 1 to 4."
+          ? "✅ 3D mesh loading completed."
+          : "❌ No 3D mesh files found in slots 1 to 4."
       );
     } else if (!anyLoaded) {
       console.log("[viewer3D] No slot STLs for this case — showing case mesh.");
