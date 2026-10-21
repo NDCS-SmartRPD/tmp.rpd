@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { getAppBasePath } from "../js/shared/pageContext.js";
+import { downloadMeshesAsPly } from "./plyExport.js";
 
 const basePath = getAppBasePath();
 const wireframeOverlays = new Set();
@@ -73,6 +74,19 @@ style.textContent = `
     filter: brightness(1.15);
     transform: scale(1.06);
   }
+
+  .component-ply-button {
+    min-width: 34px;
+    height: 30px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    color: inherit;
+    font: 700 10px Arial, sans-serif;
+    cursor: pointer;
+  }
+
+  .component-ply-button:disabled { opacity: 0.35; cursor: default; }
 
   /* One quick per-component visibility toggle, shown alongside the round
      expand button whenever the full menu is hidden — icon-only (the
@@ -1132,6 +1146,21 @@ function createComponentPanel(groups) {
     if (undercutButton) buttonsRow.appendChild(undercutButton);
     if (occlusionButton) buttonsRow.appendChild(occlusionButton);
 
+    let plyButton = null;
+    if (group.meshes?.length) {
+      plyButton = document.createElement("button");
+      plyButton.type = "button";
+      plyButton.className = "component-ply-button";
+      plyButton.textContent = "PLY";
+      plyButton.title = `Download ${group.label} as PLY`;
+      plyButton.setAttribute("aria-label", `Download ${group.label} as PLY`);
+      plyButton.addEventListener("click", () => {
+        const exportMeshes = group.getPlyMeshes?.() || group.meshes;
+        downloadMeshesAsPly(exportMeshes, group.label);
+      });
+      buttonsRow.appendChild(plyButton);
+    }
+
     // The polyline rows carry the opener for the polyline panel — it has no
     // button of its own in the nav.
     let polylineButton = null;
@@ -1253,6 +1282,7 @@ function createComponentPanel(groups) {
         opacitySlider.style.setProperty("--fill", `${opacityValue}%`);
         rail.dataset.opacity = String(opacityValue);
         if (polylineButton) polylineButton.disabled = !hasContent;
+        if (plyButton) plyButton.disabled = !hasContent;
         const mode = group.getMode?.() || "normal";
         undercutButton?.classList.toggle("active", mode === "undercut");
         occlusionButton?.classList.toggle("active", mode === "occlusion");
@@ -1442,6 +1472,16 @@ function buildDesignSlotGroups(designSlots) {
       type: "overlay",
       iconPath: entry.iconPath,
       meshes,
+      getPlyMeshes: () => meshes.map((mesh) => {
+        const undercutGeometry = mesh.userData?.undercutGeometry;
+        if (!undercutGeometry?.attributes?.color) return mesh;
+        return {
+          isMesh: true,
+          geometry: undercutGeometry,
+          matrixWorld: mesh.matrixWorld,
+          updateWorldMatrix: (...args) => mesh.updateWorldMatrix(...args),
+        };
+      }),
       supportsAnalysis: Boolean(entry.supportsOcclusion) && meshes.length > 0,
       // Read the mode off the mesh, never cached: the panel is rebuilt on every view
       // switch, and a cached mode comes back "normal" over a heatmapped slot.
@@ -1537,6 +1577,16 @@ function addVisibilityAndTransparencyControls(
       getOpacity: () => getMeshGroupOpacity(jawMeshes),
       setOpacity: (opacity) => setMeshGroupOpacity(jawMeshes, opacity),
       getMode: () => currentMode,
+      getPlyMeshes: () => jawMeshes.map((mesh) => {
+        const undercutGeometry = materialArray[mesh.name]?.[2];
+        if (!undercutGeometry?.attributes?.color) return mesh;
+        return {
+          isMesh: true,
+          geometry: undercutGeometry,
+          matrixWorld: mesh.matrixWorld,
+          updateWorldMatrix: (...args) => mesh.updateWorldMatrix(...args),
+        };
+      }),
       setMode: (mode) => {
         currentMode = mode;
         const indexByMode = { normal: 0, occlusion: 1, undercut: 2 };
