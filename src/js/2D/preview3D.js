@@ -3614,13 +3614,77 @@ async function ensureExtraOcclusionHeatmaps() {
     }
   }
 }
+// The upload's own surveying direction, inferred by the DLL from the file's flat base.
+// It is in the file's own frame (the one compute-surveying-no-pd surveys `stl_data` in),
+// so it goes to `dir` as-is, without desktopSurveyFlip. Null on failure.
+async function estimateExtraJawSurveyDirection(jaw, stlDataBase64, label) {
+  const path = "/dll/estimate-surveying";
+  const body = [
+    extraSlotAuth(),
+    {
+      case_id: state.caseIntID,
+      type: jaw === "upper" ? 1 : 2,
+      stl_data: stlDataBase64,
+    },
+  ];
+
+  const t0 = performance.now();
+  let res;
+  try {
+    res = await fetch(`${SMARTRPD_API_BASE}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    console.warn(`[preview3D] ✕ POST ${path} extra ${label} (${jaw}) failed`, err);
+    return null;
+  }
+  const dt = Math.round(performance.now() - t0);
+  const tag = res.ok ? "✓" : "✕";
+  console.log(`[preview3D] ${tag} POST ${path} extra ${label} (${jaw}) status=${res.status} ${dt}ms`);
+
+  let json = null;
+  try {
+    json = await res.json();
+  } catch {
+    json = null;
+  }
+    // estimate_surveying: 0 = successful, 1 = no border (model is closed), 2 = border is degenerate.
+  // A failure may only carry the code in its error text ("returned non-zero code 1").
+  const codeMatch = String(json?.details || json?.error || "").match(/non-zero code (\d+)/);
+  const returnCode = json?.return_code ?? (codeMatch ? Number(codeMatch[1]) : null);
+  if (returnCode !== null) {
+    const meaning =
+      { 0: "successful", 1: "no border (model is closed)", 2: "border is degenerate" }[returnCode] ||
+      "unknown code";
+    console.log(`[preview3D] estimate_surveying for ${label} (${jaw}) returned ${returnCode}: ${meaning}`);
+  }
+  
+  const vec = json?.surveying_direction?.vec;
+  const len = Array.isArray(vec) && vec.length === 3 ? Math.hypot(...vec) : 0;
+  if (!res.ok || !Number.isFinite(len) || len < 1e-9) {
+    console.warn("[preview3D] extra jaw survey estimate unusable", {
+      jaw,
+      label,
+      status: res.status,
+      error: json?.details || json?.error,
+    });
+    return null;
+  }
+  console.log(`[preview3D] estimate_surveying direction for ${label} (${jaw}): [${vec.join(", ")}]`);
+  return vec.map((v) => Number((v / len).toFixed(8)));
+}
 
 async function computeExtraJawUndercutSurface(jaw, stlDataBase64, label) {
   if (!jaw || !stlDataBase64 || !state.caseIntID) return null;
   if (!preview3DState.caseData) {
     preview3DState.caseData = await fetchCaseData();
   }
-  const direction = savedSurveyDirectionForJaw(preview3DState.caseData, jaw);
+  // const direction = savedSurveyDirectionForJaw(preview3DState.caseData, jaw);
+     const direction = (await estimateExtraJawSurveyDirection(jaw, stlDataBase64, label)) ;
+    // || 
+    // savedSurveyDirectionForJaw(preview3DState.caseData, jaw);
   if (!direction) {
     console.warn("[preview3D] extra jaw undercut skipped: saved survey direction missing", {
       jaw,
