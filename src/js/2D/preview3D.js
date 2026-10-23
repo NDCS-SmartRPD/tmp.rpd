@@ -21,6 +21,7 @@ import {
 } from "../shared/api.js";
 import { updateCaseStatus, STATUS_3D_DESIGN_APPROVED } from "./caseNote.js";
 import { confirmPreview3DApproval, sendApprovalEmails } from "./preview3DApproval.js";
+import { isSupportedMeshFile, meshFileKind } from "../../viewer3d/meshFileSupport.js";
 
 // Re-exported: sibling 2D modules import it from here.
 export { getLoggedInUser };
@@ -32,6 +33,7 @@ export let THREE = null;
 let TrackballControls = null;
 
 let STLLoader = null;
+let PLYLoader = null;
 
 export const PREVIEW_MACHINE_ID = MACHINE_ID;
 
@@ -837,18 +839,20 @@ function hidePreviewLoading(area) {
 }
 
 async function ensureThreeDeps() {
-  if (THREE && TrackballControls && STLLoader) return true;
+  if (THREE && TrackballControls && STLLoader && PLYLoader) return true;
   try {
     // Bare specifiers: the page importmap points them at vendor/three, the same entry
     // createCase.js resolves, so both modules share one THREE instance.
-    const [threeMod, trackballMod, stlMod] = await Promise.all([
+    const [threeMod, trackballMod, stlMod, plyMod] = await Promise.all([
       import("three"),
       import("three/addons/controls/TrackballControls.js"),
       import("three/addons/loaders/STLLoader.js"),
+      import("three/addons/loaders/PLYLoader.js"),
     ]);
     THREE = threeMod;
     TrackballControls = trackballMod.TrackballControls;
     STLLoader = stlMod.STLLoader;
+    PLYLoader = plyMod.PLYLoader;
     return true;
   } catch (err) {
     console.error("Failed loading three.js dependencies", err);
@@ -3092,10 +3096,10 @@ async function uploadJawThumbnail(jaw) {
 // ---- Jaw STL upload and removal ------------------------------------------
 
 // One-shot .stl file picker; the input is removed as soon as a pick lands.
-function pickStlFile(onPick) {
+function pickStlFile(onPick, accept = ".stl") {
   const input = document.createElement("input");
   input.type = "file";
-  input.accept = ".stl";
+  input.accept = accept;
   input.hidden = true;
   document.body.appendChild(input);
   input.addEventListener("change", () => {
@@ -3693,18 +3697,23 @@ async function renderExtraStl({ slotNumber, filename, data }) {
   if (!root) return;
 
   const label = filename || `slot ${slotNumber}`;
-  const loader = new STLLoader();
+  const kind = meshFileKind(filename) || "stl";
+  const loader = kind === "ply" ? new PLYLoader() : new STLLoader();
   const jaw = EXTRA_SLOT_JAW[slotNumber] || null;
   const mode = getExtraJawHeatmapMode(jaw) || "undercut";
   let geometry = loader.parse(base64ToArrayBuffer(data));
-  const extraUndercutSurface = jaw
+  const embeddedColors = kind === "ply" && Boolean(geometry.getAttribute("color"));
+  const extraUndercutSurface = jaw && kind === "stl"
     ? await computeExtraJawUndercutSurface(jaw, data, label)
     : null;
   const initialSurface = mode === "undercut" ? extraUndercutSurface : null;
-  geometry = jaw
+  geometry = embeddedColors
+    ? getDisplayGeometryForQuality(geometry, label)
+    : jaw
     ? buildExtraJawGeometry(geometry, jaw, mode, label, initialSurface)
     : getDisplayGeometryForQuality(mergeStlVertices(geometry), label);
   geometry.computeVertexNormals();
+  if (embeddedColors) cacheGeometryHeatmapColors(geometry, "undercut");
 
   const flatMaterial = new THREE.MeshStandardMaterial({
     ...(FRAMEWORK_SLOTS.has(slotNumber)
@@ -3713,7 +3722,7 @@ async function renderExtraStl({ slotNumber, filename, data }) {
     side: THREE.DoubleSide,
   });
   // Extra jaw slots carry both materials so the heatmap toggle can flip them like the jaws do.
-  const heatmapMaterial = jaw
+  const heatmapMaterial = jaw && (embeddedColors || extraUndercutSurface)
     ? new THREE.MeshStandardMaterial({
         vertexColors: true,
         ...HEATMAP_SURFACE_SHADING,
@@ -3722,7 +3731,7 @@ async function renderExtraStl({ slotNumber, filename, data }) {
     : null;
   const activeModeSurface = preview3DState.heatmapMode === "occlusion"
     ? !!geometry.userData?.extraHeatmapColorCache?.occlusion
-    : preview3DState.heatmapMode === "undercut" && hasUndercutSurface(extraUndercutSurface);
+    : preview3DState.heatmapMode === "undercut" && (embeddedColors || hasUndercutSurface(extraUndercutSurface));
 
   const mesh = new THREE.Mesh(
     geometry,
@@ -3734,6 +3743,7 @@ async function renderExtraStl({ slotNumber, filename, data }) {
   mesh.userData.surveyJaw = jaw ? undefined : null;
   mesh.userData.surfaceJaw = jaw;
   mesh.userData.isExtraJaw = !!jaw;
+  mesh.userData.embeddedHeatmap = embeddedColors;
   mesh.userData.heatmapSurface = extraUndercutSurface;
   mesh.userData.occlusionSurface = jaw ? preview3DState.extraOcclusion?.[slotNumber] || null : null;
   const group = new THREE.Group();
@@ -3750,6 +3760,7 @@ async function renderExtraStl({ slotNumber, filename, data }) {
     filename,
     slotNumber,
     undercutSurface: extraUndercutSurface,
+    embeddedColors,
     occlusionSurface: preview3DState.extraOcclusion?.[slotNumber] || null,
   };
   if (jaw) {
@@ -3767,7 +3778,7 @@ async function repaintExtraJawHeatmaps() {
   const mode = preview3DState.heatmapMode === "occlusion" ? "occlusion" : "undercut";
   for (const entry of Object.values(preview3DState.extraGroups || {})) {
     const jaw = entry?.jaw;
-    if (jaw && mode === "undercut" && !entry.undercutSurface && entry.data) {
+    if (jaw && mode === "undercut" && !entry.embeddedColors && !entry.undercutSurface && entry.data) {
       entry.undercutSurface = await computeExtraJawUndercutSurface(
         jaw,
         entry.data,
@@ -3870,8 +3881,8 @@ async function uploadExtraStl(file, targetSlot = null) {
     setMessage?.("All 4 extra 3D file slots are in use. Delete one first.");
     return;
   }
-  if (!/\.stl$/i.test(file.name)) {
-    setMessage?.("Only .stl files are supported.");
+  if (!isSupportedMeshFile(file.name)) {
+    setMessage?.("Only .stl and .ply files are supported.");
     return;
   }
 
@@ -3953,7 +3964,7 @@ function cancelExtraStlUpload(slot) {
 }
 
 function pickAndUploadExtraStl(slot) {
-  pickStlFile((file) => uploadExtraStl(file, slot));
+  pickStlFile((file) => uploadExtraStl(file, slot), ".stl,.ply");
 }
 
 // Toggle ONE uploaded extra STL (clicking its file icon). Each slot has its own group in
@@ -4436,10 +4447,10 @@ function buildUpload3dSlotRow(slot) {
   const uploadLink = document.createElement("a");
   uploadLink.href = "#";
   uploadLink.className = "upload3d-upload-link";
-  uploadLink.textContent = "Upload .stl";
+  uploadLink.textContent = "Upload .stl or .ply";
   uploadLink.setAttribute("role", "button");
   uploadLink.setAttribute("aria-label", `Upload ${slotLabel(slot)}`);
-  uploadLink.title = `Drag & drop a .stl here, or click to upload ${slotLabel(slot)}`;
+  uploadLink.title = `Drag & drop a .stl or .ply here, or click to upload ${slotLabel(slot)}`;
   uploadLink.addEventListener("click", (e) => {
     e.preventDefault();
     pickAndUploadExtraStl(slot);
@@ -4537,8 +4548,8 @@ function enableSlotDropZone(el, slot) {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
     if (!file) return;
-    if (!/\.stl$/i.test(file.name)) {
-      setMessage?.("Only .stl files are supported.");
+    if (!isSupportedMeshFile(file.name)) {
+      setMessage?.("Only .stl and .ply files are supported.");
       return;
     }
     uploadExtraStl(file, slot);
