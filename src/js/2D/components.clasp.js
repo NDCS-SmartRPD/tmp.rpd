@@ -1,6 +1,6 @@
-import { isBarComponent } from "./components.bar.js";
+import { isBarComponent, ROACH_CLASP_COMPONENT_ID } from "./components.bar.js";
 import { getComponentTemplateToothId } from "./components.mesh.js";
-import { getNeighborToothIds, TOOTH_ORDER } from "./constants.js";
+import { getNeighborToothIds, TOOTH_IMAGE_HEIGHT, TOOTH_ORDER } from "./constants.js";
 
 export const CLASP_CIRC_SURFACE = Object.freeze({
   MESIAL_BUCCAL: "mesial_buccal",
@@ -435,7 +435,18 @@ const CLASP_CIRC_POSITION_OFFSET_BY_TOOTH = buildClaspPositionOffsetByTooth(
 
 const CLASP_CIRC_RENDER_SCALE = 0.48;
 
-const CLASP_COMPONENT_IDS = new Set(["retainer-clasp", "reciprocating-clasp", "ring-clasp"]);
+/** The circumferential retainer in flange pink: the retainer clasp's art, anchors and slot. */
+export const ACRYLIC_CLASP_COMPONENT_ID = "acrylic-clasp";
+
+const RETAINER_CLASP_IDS = new Set(["retainer-clasp", ACRYLIC_CLASP_COMPONENT_ID]);
+
+const CLASP_COMPONENT_IDS = new Set([...RETAINER_CLASP_IDS, "reciprocating-clasp", "ring-clasp"]);
+
+function componentIdOf(componentOrId) {
+  return typeof componentOrId === "object" && componentOrId !== null
+    ? String(componentOrId.id || "")
+    : String(componentOrId || "");
+}
 
 /** True for catalog clasp types (circumferential, bar, ring). */
 export function isClaspComponent(componentOrId) {
@@ -447,10 +458,7 @@ export function isClaspComponent(componentOrId) {
 }
 
 export function isRetainerClaspComponent(componentOrId) {
-  if (typeof componentOrId === "object" && componentOrId !== null) {
-    return String(componentOrId.id || "") === "retainer-clasp";
-  }
-  return String(componentOrId || "") === "retainer-clasp";
+  return RETAINER_CLASP_IDS.has(componentIdOf(componentOrId));
 }
 
 export function isReciprocatingClaspComponent(componentOrId) {
@@ -920,14 +928,6 @@ export function isBallClaspComponent(componentOrId) {
   return id === BALL_CLASP_COMPONENT_ID;
 }
 
-/** A clasp, ring or bar: the retentive elements a ball clasp shares Retainer Type with. */
-export function isBallClaspRetainerRival(componentOrId) {
-  return (
-    isRetainerClaspComponent(componentOrId) ||
-    isRingClaspComponent(componentOrId) ||
-    isBarComponent(componentOrId)
-  );
-}
 
 /** The surface a tooth holds a ball clasp on — none for 21 and 31 (the midlines are 11's and 41's). */
 export function getBallClaspSurfacesForTooth(toothId) {
@@ -985,4 +985,94 @@ export function pruneInvalidBallClaspPlacementsInJaw(teethById, jaw) {
       tooth.components = tooth.components.filter((id) => !isBallClaspComponent(id));
     }
   }
+}
+
+// ── Adams clasp ──────────────────────────────────────────────────────────────
+// Wraps one premolar or molar buccally, its arrowheads engaging both embrasures. Surfaceless:
+// a click on the tooth places it. Not in CLASP_COMPONENT_IDS: it brings no reciprocation.
+
+export const ADAMS_CLASP_COMPONENT_ID = "adams-clasp";
+
+const ADAMS_CLASP_ASSET_BASE = "../../assets/RPD_Component/acrylic_clasps/Adams_Clasp";
+
+/** Tooth PNGs are 182 px, drawn TOOTH_IMAGE_HEIGHT tall in the tooth image's frame. */
+const TOOTH_ART_PX = TOOTH_IMAGE_HEIGHT / 182;
+
+/**
+ * Exported art per Q1/Q4 template tooth, at the scale of that tooth's own art. Sizes are each
+ * file's viewBox, padded 3 px a side for the inner band widened by 3 px. `x`/`y` put the
+ * art's centre relative to the tooth image's centre, in tooth art px: the upper set is
+ * measured off the design reference (17's redrawn art is fitted to sit as the measured one
+ * did); the lower set is fitted to sit the same way.
+ */
+const ADAMS_CLASP_ART = Object.freeze({
+  "14": { width: 181, height: 170, x: -6.8, y: -2.9 },
+  "15": { width: 178, height: 167, x: -7.9, y: -0.6 },
+  "16": { width: 197, height: 203, x: -9.4, y: -3.5 },
+  "17": { width: 193, height: 195, x: -9.4, y: -1.8 },
+  "18": { width: 160, height: 167, x: -8.9, y: -1.7 },
+  "44": { width: 168, height: 163, x: 4.0, y: 4.0 },
+  "45": { width: 194, height: 173, x: 3.5, y: 9.5 },
+  "46": { width: 223, height: 226, x: -7.0, y: 7.0 },
+  "47": { width: 198, height: 190, x: -6.0, y: 4.5 },
+  "48": { width: 183, height: 174, x: -8.0, y: 3.5 },
+});
+
+export function isAdamsClaspComponent(componentOrId) {
+  const id =
+    typeof componentOrId === "object" && componentOrId !== null
+      ? String(componentOrId.id || "")
+      : String(componentOrId || "");
+  return id === ADAMS_CLASP_COMPONENT_ID;
+}
+
+/** Premolars and molars (4–8) only. */
+export function canPlaceAdamsClasp(toothId) {
+  return Boolean(ADAMS_CLASP_ART[getComponentTemplateToothId(String(toothId))]);
+}
+
+/**
+ * The tooth's Adams clasp image in the tooth image's frame, before the tooth's own scale —
+ * which also mirrors it for Q2/Q3, exactly as it mirrors the tooth.
+ */
+export function getAdamsClaspVisual(toothId) {
+  const template = getComponentTemplateToothId(String(toothId));
+  const art = ADAMS_CLASP_ART[template];
+  if (!art) return null;
+  const width = art.width * TOOTH_ART_PX;
+  const height = art.height * TOOTH_ART_PX;
+  return {
+    href: `${ADAMS_CLASP_ASSET_BASE}/${template}_Adams_Clasp.svg`,
+    x: art.x * TOOTH_ART_PX - width / 2,
+    y: art.y * TOOTH_ART_PX - height / 2,
+    width,
+    height,
+  };
+}
+
+// ── Retainer slot ────────────────────────────────────────────────────────────
+// Retainer Type holds ONE retainer per tooth. The ball, Adams, acrylic and Roach clasps
+// (codes 4–7) replace whatever else holds it and are replaced by it; the clasp, ring and bar
+// trio keep their own rules between themselves.
+
+const SOLE_RETAINER_IDS = new Set([
+  BALL_CLASP_COMPONENT_ID,
+  ADAMS_CLASP_COMPONENT_ID,
+  ACRYLIC_CLASP_COMPONENT_ID,
+  ROACH_CLASP_COMPONENT_ID,
+]);
+
+function isRetainerSlotComponent(id) {
+  return (
+    isRetainerClaspComponent(id) || isRingClaspComponent(id) || isBarComponent(id) || SOLE_RETAINER_IDS.has(id)
+  );
+}
+
+/** True when placing `selected` must drop `existing` from the tooth's Retainer Type slot. */
+export function isRetainerSlotRival(selected, existing) {
+  const a = componentIdOf(selected);
+  const b = componentIdOf(existing);
+  if (a === b) return false;
+  if (SOLE_RETAINER_IDS.has(a)) return isRetainerSlotComponent(b);
+  return isRetainerSlotComponent(a) && SOLE_RETAINER_IDS.has(b);
 }

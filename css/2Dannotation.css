@@ -3057,6 +3057,12 @@ image.acrylic-flange-knockout {
   filter: url(#tint-rpd-gray);
 }
 
+/* Acrylic clasp: the retainer clasp's art in the flange pink, in either material. */
+.clasp-placement-image.is-acrylic-clasp {
+  -webkit-filter: url(#tint-flange);
+  filter: url(#tint-flange);
+}
+
 .rest-placement-marker {
   fill: #00bfa8;
   stroke: #ffffff;
@@ -3372,6 +3378,12 @@ image.acrylic-flange-knockout {
   filter: url(#tint-bar-placed);
 }
 
+/* Roach clasp: the Y bar's art in the grey of an acrylic case's wire clasps. */
+.bar-placement-image.is-roach {
+  -webkit-filter: url(#tint-rpd-gray);
+  filter: url(#tint-rpd-gray);
+}
+
 .bar-placement-hit-target {
   fill: transparent;
   stroke: none;
@@ -3406,6 +3418,19 @@ image.acrylic-flange-knockout {
   stroke-linecap: round;
   pointer-events: stroke;
   cursor: pointer;
+}
+
+/* Adams clasp: same grey as the ball clasp; clicks fall through to the tooth, which places it. */
+.adams-clasp-art {
+  pointer-events: none;
+  -webkit-filter: url(#tint-rpd-gray);
+  filter: url(#tint-rpd-gray);
+}
+
+.adams-clasp-art.is-ghost {
+  opacity: 0.6;
+  -webkit-filter: url(#tint-clasp-suggestion);
+  filter: url(#tint-clasp-suggestion);
 }
 
 /* Desktop only: place action buttons under the tools (Components) panel

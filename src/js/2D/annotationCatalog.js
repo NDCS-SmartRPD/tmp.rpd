@@ -69,6 +69,10 @@ export function isComponentBlockedByMaterial(componentId) {
   return isComponentHiddenForMaterial(componentId, state.jawMaterial);
 }
 
+export function componentBlockedByMaterialMessage() {
+  return `This component isn't available for a ${state.jawMaterial === 0 ? "metal" : "full acrylic"} case.`;
+}
+
 // Never leave the user parked on a component the current material forbids.
 // Called at the top of every catalog render.
 function healSelectionForMaterial() {
@@ -290,7 +294,7 @@ export function handleDesignComponentSelect(componentId) {
     return;
   }
   if (isComponentBlockedByMaterial(componentId)) {
-    setMessage("This component isn't available for a full acrylic case.", true);
+    setMessage(componentBlockedByMaterialMessage(), true);
     return;
   }
   state.suppressArchPlacementSuggestions = false;

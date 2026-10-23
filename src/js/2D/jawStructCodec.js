@@ -326,6 +326,12 @@ export function resolveJawStructDesign(parsed) {
         if (id === "ball-clasp") {
           // A tooth's ball clasp always sits at its mesial contact, so it carries no orientation.
           entry.placements.push({ componentId: id, surface: "mesial" });
+        } else if (id === "adams-clasp") {
+          // Wraps the whole tooth: no surface.
+          entry.placements.push({ componentId: id, surface: null });
+        } else if (id === "roach-clasp") {
+          // Placed as a Y bar, so its surface comes from the arch like the bars'.
+          entry.bars.push(id);
         } else if (id) {
           const orientField = retCode === 2 ? RETAINER_RING_TYPE_FIELD : RETAINER_CLASP_TYPE_FIELD;
           entry.placements.push({ componentId: id, surface: claspSurfaceFromField(f, orientField) });
@@ -538,7 +544,8 @@ function encodeToothLines(arrayIdx, fdi, rec, hasMesh) {
         ];
 
   // Retainer: type + bar shape (category) are web-owned (derived live). The bar
-  // mesial/distal side, clasp/ring orientation come from the loaded data. A ball clasp is 4.
+  // mesial/distal side, clasp/ring orientation come from the loaded data. The ball, Adams,
+  // acrylic and Roach clasps are 4–7.
   let retainerType = 0;
   let barCategory = Number(rawOr(RETAINER_BAR_CATEGORY_FIELD, 0));
   const barId = comps.find((id) => String(id).startsWith("bar-"));
@@ -548,9 +555,15 @@ function encodeToothLines(arrayIdx, fdi, rec, hasMesh) {
     retainerType = 3;
     barCategory = inverseOf(RETAINER_BAR_CATEGORY).get(barId) ?? barCategory;
   } else if (comps.includes("ball-clasp")) retainerType = 4;
+  else if (comps.includes("adams-clasp")) retainerType = 5;
+  else if (comps.includes("acrylic-clasp")) retainerType = 6;
+  else if (comps.includes("roach-clasp")) retainerType = 7;
   // Derived live from the RETENTIVE clasp's surface so edits persist (the reci's is derived
   // from it on decode). Falls back to loaded raw, or 0, only when nothing is placed.
-  const retainerClaspPl = placements.find((p) => p.componentId === "retainer-clasp");
+  // The acrylic clasp is a circumferential retainer too, so it stores its side the same way.
+  const retainerClaspPl = placements.find(
+    (p) => p.componentId === "retainer-clasp" || p.componentId === "acrylic-clasp"
+  );
   const ringClaspPl = placements.find((p) => p.componentId === "ring-clasp");
   const claspType = retainerClaspPl
     ? claspFieldFromSurface(retainerClaspPl.surface)

@@ -608,6 +608,14 @@ async function applyQuickPickSelection(tabId, componentId, options = {}) {
   }
 }
 
+// The full-acrylic desktop wheel: SS wire, acrylic, ball and Roach clasps.
+const ACRYLIC_RADIAL_CLASPS = [
+  { componentId: "retainer-clasp", pos: "top-left" },
+  { componentId: "acrylic-clasp", pos: "top-right" },
+  { componentId: "ball-clasp", pos: "bottom-left" },
+  { componentId: "roach-clasp", pos: "bottom-right" },
+];
+
 /**
  * Present-tooth quick picker (Rest / Bar / Recip / Clasp). Touch gets a centred sheet;
  * mouse gets the radial wheel, whose tiny labels are unusable with a finger.
@@ -615,13 +623,22 @@ async function applyQuickPickSelection(tabId, componentId, options = {}) {
 export function showPresentToothRadialQuickPick(toothId, clientX, clientY) {
   closePresentToothRadialQuickPick();
 
-  // Desktop radial: 4 hand-curated quick-picks + a RECIP submenu, anchored at the click.
-  const radialMain = [
-    { label: "REST", tab: "rests", componentId: "rest-seat", pos: "top-left" },
-    { label: "BAR", tab: "bars", componentId: "bar-i", pos: "top-right" },
-    { label: "RECIP", menu: "recip", pos: "bottom-left" },
-    { label: "CLASP", tab: "clasps", componentId: "retainer-clasp", pos: "bottom-right" },
-  ].filter((action) => !isComponentHiddenForMaterial(action.componentId, state.jawMaterial));
+  // Desktop radial: 4 hand-curated quick-picks + a RECIP submenu, anchored at the click. Full
+  // acrylic picks its four clasps instead.
+  const radialMain =
+    state.jawMaterial === 2
+      ? ACRYLIC_RADIAL_CLASPS.map(({ componentId, pos }) => ({
+          label: componentLabel(COMPONENT_BY_ID.get(componentId), state.jawMaterial),
+          tab: "clasps",
+          componentId,
+          pos,
+        }))
+      : [
+          { label: "REST", tab: "rests", componentId: "rest-seat", pos: "top-left" },
+          { label: "BAR", tab: "bars", componentId: "bar-i", pos: "top-right" },
+          { label: "RECIP", menu: "recip", pos: "bottom-left" },
+          { label: "CLASP", tab: "clasps", componentId: "retainer-clasp", pos: "bottom-right" },
+        ].filter((action) => !isComponentHiddenForMaterial(action.componentId, state.jawMaterial));
   const radialRecip = [
     {
       label: "RECIP CLASP",

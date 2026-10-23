@@ -2,6 +2,7 @@ import {
   ACTION_UPON_FAILURE,
   ASSEMBLY_REST_SUGGESTION_IDS,
   componentLabel,
+  canPlaceAdamsClasp,
   canPlaceBallClasp,
   COMPONENT_BY_ID,
   getBarPlacementSurfaceForTooth,
@@ -10,6 +11,7 @@ import {
   getMajorConnectorSpanTeeth,
   majorConnectorRunsToMidline,
   hasPalatalHolePlacementOnUpperArch,
+  isAdamsClaspComponent,
   isBallClaspComponent,
   isBarComponent,
   isReciprocatingClaspComponent,
@@ -36,7 +38,11 @@ import {
   removePlacementsByComponentIds,
   syncToothComponentsFromPlacements,
 } from "./annotationTeethModel.js";
-import { ensureMajorCatalogPickForTooth, isComponentBlockedByMaterial } from "./annotationCatalog.js";
+import {
+  componentBlockedByMaterialMessage,
+  ensureMajorCatalogPickForTooth,
+  isComponentBlockedByMaterial,
+} from "./annotationCatalog.js";
 import { assessPlacementCriteria } from "./criteria.js";
 
 // Check whether a tooth ID is anterior (unit 1-3).
@@ -133,10 +139,10 @@ export function placeSelectedComponentOnTooth(toothId, placementContext = null) 
     return;
   }
 
-  // Full acrylic can't carry mesh or the palatal A-P strap / palatal bar —
-  // refuse the placement even if a stale selection slips through the catalog gate.
+  // Each material refuses the other's parts (acrylic: mesh, A-P strap, palatal bar; metal: the
+  // acrylic denture's clasps), even if a stale selection slips through the catalog gate.
   if (isComponentBlockedByMaterial(selectedComponent.id)) {
-    setMessage("This component isn't available for a full acrylic case.", true);
+    setMessage(componentBlockedByMaterialMessage(), true);
     return;
   }
 
@@ -293,6 +299,11 @@ export function placeSelectedComponentOnTooth(toothId, placementContext = null) 
       `For ${componentLabel(selectedComponent, state.jawMaterial)}, click a rest suggestion point (mesial, distal, or lingual).`,
       true
     );
+    return;
+  }
+
+  if (isAdamsClaspComponent(selectedComponent) && !canPlaceAdamsClasp(toothId)) {
+    setMessage("An Adams clasp goes on a premolar or molar.", true);
     return;
   }
 

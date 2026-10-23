@@ -1,13 +1,12 @@
 import {
   ACTION_UPON_FAILURE,
-  isBallClaspComponent,
-  isBallClaspRetainerRival,
   isBarComponent,
   isClaspComponent,
   isMajorConnectorComponent,
   isMeshComponent,
   isPlateComponentId,
   isReciprocatingClaspComponent,
+  isRetainerSlotRival,
 } from "./components.js";
 
 // Resolve stable tooth id used in validation messages.
@@ -99,19 +98,15 @@ export function assessPlacementCriteria(tooth, selectedComponent, componentById)
     }
   }
 
-  // Retainer Type is ONE slot: a ball clasp (4) and a clasp, ring or bar replace each other.
-  const selectedIsBallClasp = isBallClaspComponent(selectedComponent);
-  if (selectedIsBallClasp || isBallClaspRetainerRival(selectedComponent)) {
-    const retainerConflicts = existingComponents.filter((id) =>
-      selectedIsBallClasp ? isBallClaspRetainerRival(id) : isBallClaspComponent(id)
+  // Retainer Type is ONE slot: the ball, Adams, acrylic and Roach clasps (4–7) and any other
+  // retainer replace each other.
+  const retainerConflicts = existingComponents.filter((id) => isRetainerSlotRival(selectedComponent, id));
+  if (retainerConflicts.length > 0) {
+    return failure(
+      `Tooth ${toothId} already has a retainer (${retainerConflicts.join(", ")}); replacing with ${selectedComponent.id}.`,
+      ACTION_UPON_FAILURE.REMOVE_THEN_PLACE,
+      retainerConflicts
     );
-    if (retainerConflicts.length > 0) {
-      return failure(
-        `Tooth ${toothId} already has ${selectedIsBallClasp ? "a clasp or bar" : "a ball clasp"}; replacing with ${selectedComponent.id}.`,
-        ACTION_UPON_FAILURE.REMOVE_THEN_PLACE,
-        retainerConflicts
-      );
-    }
   }
 
   if (selectedIsBar) {

@@ -1,6 +1,7 @@
 /**
  * The full-acrylic (material 2) catalog: BARS and ASSEMBLY tabs and the reciprocating/ring
- * clasps hide, and the wire clasps take their stainless-steel names. Metal keeps everything.
+ * clasps hide, and the wire clasps take their stainless-steel names. Metal (0) hides only the
+ * acrylic denture's ball, Adams, acrylic and Roach clasps.
  */
 import {
   COMPONENT_BY_ID,
@@ -49,6 +50,17 @@ describe("acrylic catalog", () => {
     ];
     for (const id of usable) {
       expect(isComponentHiddenForMaterial(id, ACRYLIC)).toBe(false);
+    }
+  });
+
+  test("hides the acrylic denture's clasps in metal only", () => {
+    for (const id of ["ball-clasp", "adams-clasp", "acrylic-clasp", "roach-clasp"]) {
+      expect(isComponentHiddenForMaterial(id, METAL)).toBe(true);
+      expect(isComponentHiddenForMaterial(id, ACRYLIC)).toBe(false);
+      expect(isComponentHiddenForMaterial(id, null)).toBe(false);
+    }
+    for (const id of ["retainer-clasp", "reciprocating-clasp", "ring-clasp", "bar-y"]) {
+      expect(isComponentHiddenForMaterial(id, METAL)).toBe(false);
     }
   });
 

@@ -15,11 +15,15 @@ export const POSTERIOR_REST_TYPE = new Map([
 
 // Retainer_Type { no_retainer=0, clasp_retainer=1, ring_retainer=2, bar_retainer=3 }
 // 3 (bar) resolves to a bar-* shape via RETAINER_BAR_CATEGORY — handled in the codec.
-// 4 is a web addition, not yet in the desktop enum: the ball clasp at the tooth's mesial contact.
+// 4–7 are web additions, not yet in the desktop enum: the ball clasp at the tooth's mesial
+// contact, the Adams clasp, the (pink) acrylic clasp, and the Roach clasp placed as a Y bar.
 export const RETAINER_TYPE = new Map([
   [1, "retainer-clasp"], // confirmed: upper 17/23/27, lower 37
   [2, "ring-clasp"],     // inferred (no sample instance)
   [4, "ball-clasp"],
+  [5, "adams-clasp"],
+  [6, "acrylic-clasp"],
+  [7, "roach-clasp"],
 ]);
 
 // Retainer_Bar_Category { rb_I=0, rb_S=1, rb_U=2, rb_Y=3, rb_T=4, rb_R=5 } is bar SHAPE.

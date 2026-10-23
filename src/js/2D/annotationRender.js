@@ -6,6 +6,7 @@ import {
   getBarPlacementSurfaceForTooth,
   getBarSuggestibleToothIdSet,
   handleMeshToolDoubleClick,
+  isAdamsClaspComponent,
   isBallClaspComponent,
   isBarComponent,
   isClaspComponent,
@@ -40,6 +41,8 @@ import {
   toggleToothStatus,
 } from "./annotationTeethModel.js";
 import {
+  appendAdamsClaspSuggestions,
+  appendAdamsClaspVisuals,
   appendBallClaspSuggestions,
   appendBallClaspVisuals,
   appendRetainerClaspSuggestionPoints,
@@ -500,7 +503,11 @@ export function renderJaw(jaw) {
   flangeLayer.appendChild(acrylicLayers.flangeTeeth);
   const archDefs = svgEl("defs", {});
   archDefs.appendChild(knockout);
+  // Adams clasps tuck under plates, connectors, the acrylic base and flanges (their tags
+  // embed in the base), so they paint before all of them.
+  const adamsClaspLayer = svgEl("g", { class: "adams-clasp-layer" });
   arch.appendChild(archDefs);
+  arch.appendChild(adamsClaspLayer);
   arch.appendChild(acrylicLayer);
 
   const ids = TOOTH_ORDER[jaw];
@@ -585,6 +592,7 @@ export function renderJaw(jaw) {
     appendRestSuggestionPoints(suggestionGroup, tooth, toothId, jaw);
     appendRetainerClaspSuggestionPoints(suggestionGroup, tooth, toothId, jaw);
     appendBallClaspSuggestions(suggestionGroup, tooth, toothId, jaw);
+    appendAdamsClaspSuggestions(suggestionGroup, tooth, toothId, jaw);
 
     const ballClaspGroup = svgEl("g", {
       class: "tooth-ball-clasps",
@@ -594,6 +602,15 @@ export function renderJaw(jaw) {
     });
     appendBallClaspVisuals(ballClaspGroup, tooth, toothId, jaw);
     if (ballClaspGroup.childNodes.length) ballClaspLayer.appendChild(ballClaspGroup);
+
+    const adamsClaspGroup = svgEl("g", {
+      class: "tooth-adams-clasps",
+      "data-tooth-id": toothId,
+      "data-jaw": jaw,
+      transform: toothTransform,
+    });
+    appendAdamsClaspVisuals(adamsClaspGroup, tooth, toothId, jaw);
+    if (adamsClaspGroup.childNodes.length) adamsClaspLayer.appendChild(adamsClaspGroup);
 
     const toothClickKey = `mesh-tooth:${jaw}:${toothId}`;
     group.addEventListener("click", (event) => {
@@ -644,7 +661,8 @@ export function renderJaw(jaw) {
       }
 
       if (tooth.isPresent) {
-        if (catalogPick?.id === "rest-onlay") {
+        // Surfaceless and dot-free: the tap on the tooth itself places (or removes) it.
+        if (catalogPick?.id === "rest-onlay" || isAdamsClaspComponent(catalogPick)) {
           placeSelectedComponentOnTooth(toothId, null);
           renderJaw(jaw);
           return;
