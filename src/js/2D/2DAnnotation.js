@@ -895,6 +895,11 @@ function formatPlacementSurfaceForRemoveUi(componentId, surface) {
   return String(surface).replace(/_/g, " ");
 }
 
+// `removeLabel` tells apart parts that share a catalog name and can sit on the same tooth.
+function formatComponentLabelForRemoveUi(def, componentId) {
+  return def?.removeLabel || componentLabel(def, state.jawMaterial) || componentId;
+}
+
 export async function openRemoveComponentPicker(toothId, jaw, anchorEvent) {
   closeRemoveComponentDialog();
   closePresentToothRadialQuickPick();
@@ -971,7 +976,7 @@ export async function openRemoveComponentPicker(toothId, jaw, anchorEvent) {
 
   visiblePlacements.forEach((entry) => {
     const def = COMPONENT_BY_ID.get(entry.componentId);
-    const label = componentLabel(def, state.jawMaterial) || entry.componentId;
+    const label = formatComponentLabelForRemoveUi(def, entry.componentId);
     const surf = formatPlacementSurfaceForRemoveUi(entry.componentId, entry.surface);
     const btn = document.createElement("button");
     btn.type = "button";
@@ -999,7 +1004,7 @@ export async function openRemoveComponentPicker(toothId, jaw, anchorEvent) {
       }
       placement.applyRemovalSideEffectsForTooth(t, removed);
       const defR = removed ? COMPONENT_BY_ID.get(removed.componentId) : null;
-      const name = componentLabel(defR, state.jawMaterial) || removed?.componentId || "item";
+      const name = formatComponentLabelForRemoveUi(defR, removed?.componentId) || "item";
       setMessage(`Removed ${name} from tooth ${toothId}.`, false);
       finish();
       renderJaws();
@@ -1184,7 +1189,10 @@ async function maybePromptRestoreLocalDraft(serverSnapshot) {
   } finally {
     history.restoring = false;
   }
-  await refreshUiAfterHistoryRestore();
+  // Like any case open, the restored draft starts in select (unlocked) mode.
+  state.locks = { upper: false, lower: false };
+  const locks = await import("./annotationLocks.js");
+  locks.syncDesignModeWithLocks(false);
   history.past = [serverSnapshot, cloneStateForHistory()];
   history.future = [];
   updateUndoRedoButtons();
