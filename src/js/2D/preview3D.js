@@ -3614,6 +3614,58 @@ async function ensureExtraOcclusionHeatmaps() {
     }
   }
 }
+
+// The upload rebuilt by the DLL's read_stl repair (SurfaceMesh_CreateFromFile), as base64 STL.
+// compute-surveying-no-pd returns one value per repaired vertex, so the page should draw this
+// copy rather than the raw upload. Null on failure.
+async function repairExtraStl(jaw, stlDataBase64, label) {
+  const path = "/dll/repair-stl";
+  const body = [
+    extraSlotAuth(),
+    {
+      case_id: state.caseIntID,
+      type: jaw === "upper" ? 1 : 2,
+      stl_data: stlDataBase64,
+    },
+  ];
+
+  const t0 = performance.now();
+  let res;
+  try {
+    res = await fetch(`${SMARTRPD_API_BASE}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    console.warn(`[preview3D] ✕ POST ${path} extra ${label} (${jaw}) failed`, err);
+    return null;
+  }
+  const dt = Math.round(performance.now() - t0);
+  const tag = res.ok ? "✓" : "✕";
+  console.log(`[preview3D] ${tag} POST ${path} extra ${label} (${jaw}) status=${res.status} ${dt}ms`);
+
+  let json = null;
+  try {
+    json = await res.json();
+  } catch {
+    json = null;
+  }
+  if (!res.ok || !json?.repaired_stl_data) {
+    console.warn("[preview3D] extra jaw STL repair failed", {
+      jaw,
+      label,
+      status: res.status,
+      error: json?.details || json?.error,
+    });
+    return null;
+  }
+  console.log(
+    `[preview3D] repair_stl for ${label} (${jaw}): ${json.point_count} points, ${json.face_count} faces`
+  );
+  return { data: json.repaired_stl_data, pointCount: json.point_count, faceCount: json.face_count };
+}
+
 // The upload's own surveying direction, inferred by the DLL from the file's flat base.
 // It is in the file's own frame (the one compute-surveying-no-pd surveys `stl_data` in),
 // so it goes to `dir` as-is, without desktopSurveyFlip. Null on failure.
@@ -3765,10 +3817,35 @@ async function renderExtraStl({ slotNumber, filename, data }) {
   const loader = kind === "ply" ? new PLYLoader() : new STLLoader();
   const jaw = EXTRA_SLOT_JAW[slotNumber] || null;
   const mode = getExtraJawHeatmapMode(jaw) || "undercut";
-  let geometry = loader.parse(base64ToArrayBuffer(data));
+  // let geometry = loader.parse(base64ToArrayBuffer(data));
+  // const embeddedColors = kind === "ply" && Boolean(geometry.getAttribute("color"));
+  // const extraUndercutSurface = jaw && kind === "stl"
+  //   ? await computeExtraJawUndercutSurface(jaw, data, label)
+  //   : null;
+  // const initialSurface = mode === "undercut" ? extraUndercutSurface : null;
+  // geometry = embeddedColors
+  //   ? getDisplayGeometryForQuality(geometry, label)
+  //   : jaw
+  //   ? buildExtraJawGeometry(geometry, jaw, mode, label, initialSurface)
+  //   : getDisplayGeometryForQuality(mergeStlVertices(geometry), label);
+  // geometry.computeVertexNormals();
+  // if (embeddedColors) cacheGeometryHeatmapColors(geometry, "undercut");
+
+  // Jaw STLs are drawn and surveyed as the DLL's repaired copy, so the DLL's per-vertex
+  // values line up with the page's vertices. Falls back to the upload if the repair fails.
+  // const repaired = jaw && kind === "stl" ? await repairExtraStl(jaw, data, label) : null;
+  // const meshData = repaired?.data || data;
+  // The backend now remaps the DLL's values onto the upload's own vertices, so the repaired
+  // copy isn't needed: the upload is drawn and surveyed as-is.
+  const meshData = data;
+  // let geometry = loader.parse(base64ToArrayBuffer(data));
+  let geometry = loader.parse(base64ToArrayBuffer(meshData));
   const embeddedColors = kind === "ply" && Boolean(geometry.getAttribute("color"));
+  // const extraUndercutSurface = jaw && kind === "stl"
+  //   ? await computeExtraJawUndercutSurface(jaw, data, label)
+  //   : null;
   const extraUndercutSurface = jaw && kind === "stl"
-    ? await computeExtraJawUndercutSurface(jaw, data, label)
+    ? await computeExtraJawUndercutSurface(jaw, meshData, label)
     : null;
   const initialSurface = mode === "undercut" ? extraUndercutSurface : null;
   geometry = embeddedColors
@@ -3776,6 +3853,11 @@ async function renderExtraStl({ slotNumber, filename, data }) {
     : jaw
     ? buildExtraJawGeometry(geometry, jaw, mode, label, initialSurface)
     : getDisplayGeometryForQuality(mergeStlVertices(geometry), label);
+  // if (repaired) {
+  //   console.log(
+  //     `[preview3D] repaired ${label} (${jaw}): DLL ${repaired.pointCount} points, page ${geometryHeatmapSourceCount(geometry)} vertices`
+  //   );
+  // }
   geometry.computeVertexNormals();
   if (embeddedColors) cacheGeometryHeatmapColors(geometry, "undercut");
 
@@ -3820,7 +3902,8 @@ async function renderExtraStl({ slotNumber, filename, data }) {
   preview3DState.extraGroups[slotNumber] = {
     group,
     jaw,
-    data,
+    //data,
+    data: meshData,
     filename,
     slotNumber,
     undercutSurface: extraUndercutSurface,
