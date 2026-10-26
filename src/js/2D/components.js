@@ -1,3 +1,10 @@
+import { isMeshComponent } from "./components.mesh.js";
+import {
+  isPalatalBarMajorComponent,
+  isPalatalHoleMajorComponent,
+  isPalatalStrapMajorComponent,
+} from "./components.major.js";
+
 export const COMPONENT_TABS = [
   { id: "mesh", label: "MESH" },
   { id: "rests", label: "RESTS" },
@@ -8,6 +15,38 @@ export const COMPONENT_TABS = [
   { id: "assembly", label: "ASSEMBLY" },
   { id: "case-note", label: "CASE NOTE", kind: "form" }
 ];
+
+// Full-acrylic catalog: hidden tabs and parts. Wire-clasp dentures have no bars, assemblies,
+// or cast reciprocal/ring arms; `acrylicLabel` renames the wire clasps.
+export const ACRYLIC_HIDDEN_TAB_IDS = new Set(["bars", "assembly"]);
+export const ACRYLIC_HIDDEN_COMPONENT_IDS = new Set(["reciprocating-clasp", "ring-clasp"]);
+// Metal (cast) catalog: the acrylic denture's wire and acrylic clasps.
+export const METAL_HIDDEN_COMPONENT_IDS = new Set(["ball-clasp", "adams-clasp", "acrylic-clasp", "roach-clasp"]);
+
+/** Display name under a jaw material: full acrylic (2) renames the wire clasps. */
+export function componentLabel(def, material) {
+  return (material === 2 && def?.acrylicLabel) || def?.label || "";
+}
+
+export function isTabHiddenForMaterial(tabId, material) {
+  return material === 2 && ACRYLIC_HIDDEN_TAB_IDS.has(tabId);
+}
+
+/** Parts a case's material can't use: metal (0) loses the acrylic denture's clasps; full
+ *  acrylic (2) metal mesh, open palatal majors, the hidden tabs and clasps. Its catalog and
+ *  quick picks hide them, and placement refuses them. */
+export function isComponentHiddenForMaterial(componentId, material) {
+  if (material === 0) return METAL_HIDDEN_COMPONENT_IDS.has(componentId);
+  if (material !== 2 || componentId === "mesh-flange") return false;
+  return (
+    ACRYLIC_HIDDEN_COMPONENT_IDS.has(componentId) ||
+    ACRYLIC_HIDDEN_TAB_IDS.has(COMPONENT_BY_ID.get(componentId)?.tab) ||
+    isMeshComponent(componentId) ||
+    isPalatalStrapMajorComponent(componentId) ||
+    isPalatalHoleMajorComponent(componentId) ||
+    isPalatalBarMajorComponent(componentId)
+  );
+}
 
 export const ACTION_UPON_FAILURE = {
   PREVENT_PLACEMENT: "PreventPlacement",
@@ -205,6 +244,7 @@ export const COMPONENT_CATALOG = [
   {
     id: "retainer-clasp",
     label: "Retainer",
+    acrylicLabel: "SS_Wire_Clasp",
     shortLabel: "CC",
     icon: "../../assets/menu-icon/clasps/Retainer_Clasp.png",
     tab: "clasps",
@@ -242,8 +282,46 @@ export const COMPONENT_CATALOG = [
   {
     id: "ball-clasp",
     label: "Ball Clasp",
+    acrylicLabel: "SS_Ball_Clasp",
     shortLabel: "BL",
     icon: "../../assets/menu-icon/clasps/Ball_Clasp.png",
+    tab: "clasps",
+    requiresPresence: true,
+    requiresMissing: false,
+    conflictsWith: [],
+    actionUponFailure: ACTION_UPON_FAILURE.PREVENT_PLACEMENT,
+  },
+  // Wraps one premolar/molar buccally; placed with a click on the tooth (see components.clasp.js).
+  {
+    id: "adams-clasp",
+    label: "Adams Clasp",
+    acrylicLabel: "SS_Adams_Clasp",
+    shortLabel: "AD",
+    icon: "../../assets/menu-icon/clasps/Adams_Clasp.png",
+    tab: "clasps",
+    requiresPresence: true,
+    requiresMissing: false,
+    conflictsWith: [],
+    actionUponFailure: ACTION_UPON_FAILURE.PREVENT_PLACEMENT,
+  },
+  // The retainer clasp in flange pink: same suggestion points and art.
+  {
+    id: "acrylic-clasp",
+    label: "Acrylic Clasp",
+    shortLabel: "AC",
+    icon: "../../assets/menu-icon/clasps/Acrylic_Clasp.png",
+    tab: "clasps",
+    requiresPresence: true,
+    requiresMissing: false,
+    conflictsWith: [],
+    actionUponFailure: ACTION_UPON_FAILURE.REMOVE_THEN_PLACE,
+  },
+  // A Y bar in clasp grey, placed on a highlighted tooth like the bars (see components.bar.js).
+  {
+    id: "roach-clasp",
+    label: "Roach Clasp",
+    shortLabel: "RO",
+    icon: "../../assets/menu-icon/Bars/Retainer_Y-Bar.png",
     tab: "clasps",
     requiresPresence: true,
     requiresMissing: false,
@@ -408,6 +486,8 @@ export const COMPONENT_CATALOG = [
   {
     id: "major-lower-lingual-plate",
     label: "Lingual Plate",
+    // plate-prox is also "Lingual Plate" and shares the tooth, so the remove list names this one.
+    removeLabel: "Lingual Plate (Major Connector)",
     shortLabel: "LP",
     icon: "../../assets/menu-icon/Connectors/Lower/MC_lingual_plate.png",
     section: "lower",
@@ -487,9 +567,15 @@ export {
 } from "./components.plate.js";
 
 export {
+  ACRYLIC_CLASP_COMPONENT_ID,
+  ADAMS_CLASP_COMPONENT_ID,
   BALL_CLASP_COMPONENT_ID,
+  canPlaceAdamsClasp,
   canPlaceBallClasp,
+  getAdamsClaspVisual,
+  isAdamsClaspComponent,
   getBallClaspPartnerToothId,
+  getBallClaspRenderScale,
   getBallClaspSurfacesForTooth,
   getBallClaspVisual,
   getRetainerClaspAssetReference,
@@ -503,8 +589,8 @@ export {
   getRetainerClaspSuggestionPointsForTooth,
   getRetainerClaspSuggestionRadius,
   isBallClaspComponent,
-  isBallClaspRetainerRival,
   isReciprocatingClaspComponent,
+  isRetainerSlotRival,
   isRingClaspComponent,
   isRetainerClaspComponent,
   isClaspComponent,
@@ -525,6 +611,7 @@ export {
   isBarComponent,
   isBarPlacementSurface,
   pruneInvalidBarPlacementsInJaw,
+  ROACH_CLASP_COMPONENT_ID,
 } from "./components.bar.js";
 
 export {

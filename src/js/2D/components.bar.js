@@ -2,6 +2,9 @@ import { TOOTH_ORDER } from "./constants.js";
 import { COMPONENT_ASSET_BASE, getComponentTemplateToothId, isMeshComponent } from "./components.mesh.js";
 
 const BAR_TAB = "bars";
+
+/** A CLASPS item that places and draws exactly as a Y bar. */
+export const ROACH_CLASP_COMPONENT_ID = "roach-clasp";
 const BAR_SURFACE_RE = /^bar_(d[12])_(mesial|distal)$/;
 const BAR_SURFACE_SIDE_RE = /^bar_d[12]_(mesial|distal)$/;
 
@@ -418,6 +421,7 @@ const BAR_SHAPE_LETTER = Object.freeze({
   "bar-t": "T",
   "bar-u": "U",
   "bar-y": "Y",
+  [ROACH_CLASP_COMPONENT_ID]: "Y",
 });
 
 /** Validate a bar surface token: bar_d1_mesial | bar_d1_distal | bar_d2_mesial | bar_d2_distal. */
@@ -426,12 +430,14 @@ export function isBarPlacementSurface(surface) {
   return BAR_SURFACE_SIDE_RE.test(s);
 }
 
-// Check whether a component belongs to bar family.
+// Check whether a component belongs to bar family (the Roach clasp included).
 export function isBarComponent(componentOrId) {
   if (typeof componentOrId === "object" && componentOrId !== null) {
-    return componentOrId.tab === BAR_TAB || String(componentOrId.id || "").startsWith("bar-");
+    const id = String(componentOrId.id || "");
+    return componentOrId.tab === BAR_TAB || id.startsWith("bar-") || id === ROACH_CLASP_COMPONENT_ID;
   }
-  return String(componentOrId || "").startsWith("bar-");
+  const id = String(componentOrId || "");
+  return id.startsWith("bar-") || id === ROACH_CLASP_COMPONENT_ID;
 }
 
 /** Teeth eligible for bar suggestions: present teeth within ±1/±2 of any mesh-bearing tooth. */

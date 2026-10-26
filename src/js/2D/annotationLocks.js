@@ -259,7 +259,6 @@ function toggleBothJawsLock() {
   const enteringDesignMode = !bothLocked;
   state.locks.upper = !bothLocked;
   state.locks.lower = !bothLocked;
-  refreshLockButtons();
   syncDesignModeWithLocks(true);
   recordHistoryIfChanged(historyBefore);
   // On the first lock of a brand-new, empty case, ask which denture-base material
@@ -434,6 +433,8 @@ function drawFromScratch() {
 }
 
 export function updateEditModeUI() {
+  // The lock icon follows state here too, so undo/redo and a restored draft can't leave it stale.
+  refreshLockButtons();
   const panel = document.getElementById("editModePanel");
   const active = state.designMode;
   if (panel) {

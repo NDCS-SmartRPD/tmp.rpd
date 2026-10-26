@@ -4,6 +4,9 @@ import {
   COMPONENT_CATALOG,
   COMPONENT_BY_ID,
   COMPONENT_TABS,
+  componentLabel,
+  isComponentHiddenForMaterial,
+  isTabHiddenForMaterial,
   deferMeshInteraction,
   getDefaultMajorConnectorIdForDesignMode,
   handleMeshCatalogDoubleClickApplyAll,
@@ -13,7 +16,6 @@ import {
   isClaspComponent,
   isPalatalHoleMajorComponent,
   isPalatalBarMajorComponent,
-  isPalatalStrapMajorComponent,
   isPlateComponentId,
   ensurePalatalBarPlacementsOnAnchoredUpperTeeth,
   removeNonBarMajorPlacementsFromUpperArch,
@@ -25,7 +27,6 @@ import {
   state,
   DEFAULT_COMPONENT_ID,
   getHistoryStateSignature,
-  isFullAcrylic,
   recordHistoryIfChanged,
   setMessage,
   renderJaws,
@@ -62,20 +63,14 @@ import {
 import { toast, attachThemedCalendar } from "../shared/toast.js";
 
 // ── Material restrictions ────────────────────────────────────────────────────
-// Full-acrylic (jawMaterial === 2) disables metal mesh and the open palatal majors.
-// Plate, Horseshoe, the flange, rests and bars stay.
-/** Components that stay available in a full-acrylic case despite their tab/family. */
-const ACRYLIC_ALLOWED_COMPONENT_IDS = new Set(["mesh-flange"]);
-
+// What the current material can't use (components.isComponentHiddenForMaterial): hidden from
+// the catalog and quick picks, and refused on placement.
 export function isComponentBlockedByMaterial(componentId) {
-  if (!isFullAcrylic()) return false;
-  if (ACRYLIC_ALLOWED_COMPONENT_IDS.has(componentId)) return false;
-  return (
-    isMeshComponent(componentId) ||
-    isPalatalStrapMajorComponent(componentId) ||
-    isPalatalHoleMajorComponent(componentId) ||
-    isPalatalBarMajorComponent(componentId)
-  );
+  return isComponentHiddenForMaterial(componentId, state.jawMaterial);
+}
+
+export function componentBlockedByMaterialMessage() {
+  return `This component isn't available for a ${state.jawMaterial === 0 ? "metal" : "full acrylic"} case.`;
 }
 
 // Never leave the user parked on a component the current material forbids.
@@ -84,7 +79,12 @@ function healSelectionForMaterial() {
   if (state.selectedComponentId && isComponentBlockedByMaterial(state.selectedComponentId)) {
     state.selectedComponentId = null;
   }
+  if (isTabHiddenForMaterial(state.selectedTab, state.jawMaterial)) {
+    state.selectedTab = "mesh";
+  }
 }
+
+let catalogFollowsMaterial = false;
 
 // Build component tabs and initialize the first visible catalog view.
 export function initComponentCatalog() {
@@ -119,6 +119,11 @@ export function initComponentCatalog() {
       tabsEl.appendChild(button);
     }
   }
+  // The catalog differs by material (hidden tabs and parts, wire-clasp names).
+  if (!catalogFollowsMaterial && typeof window !== "undefined") {
+    catalogFollowsMaterial = true;
+    window.addEventListener("jaw-material-change", () => renderComponentCatalog());
+  }
   renderComponentCatalog();
 }
 
@@ -129,6 +134,7 @@ export function renderComponentCatalog() {
   tabs.forEach((tabBtn, index) => {
     const tabId = COMPONENT_TABS[index]?.id;
     tabBtn.classList.toggle("is-active", tabId === state.selectedTab);
+    tabBtn.classList.toggle("is-hidden", isTabHiddenForMaterial(tabId, state.jawMaterial));
   });
 
   const itemsEl = document.getElementById("componentItems");
@@ -144,7 +150,8 @@ export function renderComponentCatalog() {
   }
 
   const tabItems = COMPONENT_CATALOG.filter(
-    (entry) => entry.tab === state.selectedTab && entry.hidden !== true
+    (entry) =>
+      entry.tab === state.selectedTab && entry.hidden !== true && !isComponentHiddenForMaterial(entry.id, state.jawMaterial)
   );
   const groups = COMPONENT_GROUPS[state.selectedTab];
   if (groups) {
@@ -221,15 +228,8 @@ export function createComponentItemButton(item) {
   ensureMeshIconTintFilter();
   const button = document.createElement("button");
   button.type = "button";
-  const blockedByMaterial = isComponentBlockedByMaterial(item.id);
-  button.className = `component-item ${state.selectedComponentId === item.id ? "is-active" : ""}${blockedByMaterial ? " is-disabled" : ""}`;
-  button.title = blockedByMaterial
-    ? `${item.label} — not available for a full acrylic case`
-    : item.label;
-  if (blockedByMaterial) {
-    button.disabled = true;
-    button.setAttribute("aria-disabled", "true");
-  }
+  button.className = `component-item ${state.selectedComponentId === item.id ? "is-active" : ""}`;
+  button.title = componentLabel(item, state.jawMaterial);
 
   const icon = document.createElement("span");
   icon.className = "component-icon";
@@ -237,7 +237,7 @@ export function createComponentItemButton(item) {
     const iconImg = document.createElement("img");
     iconImg.className = "component-icon-img";
     iconImg.src = item.icon;
-    iconImg.alt = item.label;
+    iconImg.alt = componentLabel(item, state.jawMaterial);
     icon.appendChild(iconImg);
   } else {
     icon.textContent = item.shortLabel;
@@ -245,7 +245,7 @@ export function createComponentItemButton(item) {
 
   const label = document.createElement("span");
   label.className = "component-label";
-  label.textContent = item.label;
+  label.textContent = componentLabel(item, state.jawMaterial);
 
   button.appendChild(icon);
   button.appendChild(label);
@@ -294,7 +294,7 @@ export function handleDesignComponentSelect(componentId) {
     return;
   }
   if (isComponentBlockedByMaterial(componentId)) {
-    setMessage("This component isn't available for a full acrylic case.", true);
+    setMessage(componentBlockedByMaterialMessage(), true);
     return;
   }
   state.suppressArchPlacementSuggestions = false;
@@ -313,7 +313,7 @@ export function handleDesignComponentSelect(componentId) {
         state.components.find((id) => COMPONENT_BY_ID.has(id)) || DEFAULT_COMPONENT_ID;
       renderComponentCatalog();
       renderJaws();
-      setMessage(`${selected.label} removed from design list.`, false);
+      setMessage(`${componentLabel(selected, state.jawMaterial)} removed from design list.`, false);
       return;
     }
 
@@ -324,7 +324,7 @@ export function handleDesignComponentSelect(componentId) {
     renderComponentCatalog();
     renderJaws();
     setMessage(
-      `${selected.label} selected. Single-click a missing tooth to place; double-click to change that tooth’s mesh to this type (different teeth can use different meshes).`,
+      `${componentLabel(selected, state.jawMaterial)} selected. Single-click a missing tooth to place; double-click to change that tooth’s mesh to this type (different teeth can use different meshes).`,
       false
     );
     return;
@@ -341,7 +341,7 @@ export function handleDesignComponentSelect(componentId) {
         state.components.find((id) => COMPONENT_BY_ID.has(id)) || DEFAULT_COMPONENT_ID;
       renderComponentCatalog();
       renderJaws();
-      setMessage(`${selected.label} deselected. Click a plated tooth to remove its plate.`, false);
+      setMessage(`${componentLabel(selected, state.jawMaterial)} deselected. Click a plated tooth to remove its plate.`, false);
       return;
     }
 
@@ -352,7 +352,7 @@ export function handleDesignComponentSelect(componentId) {
     renderComponentCatalog();
     renderJaws();
     setMessage(
-      `${selected.label} selected. Click cyan suggestion markers on present teeth to toggle this plate.`,
+      `${componentLabel(selected, state.jawMaterial)} selected. Click cyan suggestion markers on present teeth to toggle this plate.`,
       false
     );
     return;
@@ -399,8 +399,8 @@ export function handleDesignComponentSelect(componentId) {
     renderJaws();
     setMessage(
       isPalatalBarMajorComponent(componentId)
-        ? `${selected.label} selected. Connector parts and P_Bar are shown; click any plated tooth to remove or add back a segment.`
-        : `${selected.label} selected. Click teeth with mesh or plate to place or remove this major connector.`,
+        ? `${componentLabel(selected, state.jawMaterial)} selected. Connector parts and P_Bar are shown; click any plated tooth to remove or add back a segment.`
+        : `${componentLabel(selected, state.jawMaterial)} selected. Click teeth with mesh or plate to place or remove this major connector.`,
       false
     );
     return;
@@ -413,13 +413,13 @@ export function handleDesignComponentSelect(componentId) {
     state.components = state.components.filter((id) => id !== componentId);
     renderComponentCatalog();
     renderJaws();
-    setMessage(`${selected.label} removed from design list.`, false);
+    setMessage(`${componentLabel(selected, state.jawMaterial)} removed from design list.`, false);
     return;
   }
 
   const conflicts = state.components.filter((id) => selected.conflictsWith.includes(id));
   if (conflicts.length > 0 && selected.actionUponFailure === ACTION_UPON_FAILURE.PREVENT_PLACEMENT) {
-    setMessage(`Cannot add ${selected.label}. Conflicts with ${conflicts.join(", ")}.`, true);
+    setMessage(`Cannot add ${componentLabel(selected, state.jawMaterial)}. Conflicts with ${conflicts.join(", ")}.`, true);
     return;
   }
 
@@ -431,7 +431,7 @@ export function handleDesignComponentSelect(componentId) {
   renderComponentCatalog();
   if (isBarComponent(selected)) {
     setMessage(
-      `${selected.label} selected. Click a highlighted present tooth within two positions of a mesh-bearing tooth to place.`,
+      `${componentLabel(selected, state.jawMaterial)} selected. Click a highlighted present tooth within two positions of a mesh-bearing tooth to place.`,
       false
     );
     return;
@@ -485,7 +485,7 @@ export function handleDesignComponentSelect(componentId) {
     );
     return;
   }
-  setMessage(`${selected.label} added to design list.`, false);
+  setMessage(`${componentLabel(selected, state.jawMaterial)} added to design list.`, false);
   } finally {
     recordHistoryIfChanged(historyBefore);
   }
@@ -500,7 +500,7 @@ export function renderSelectedComponents() {
   for (const componentId of state.components) {
     const chip = document.createElement("span");
     chip.className = "selected-chip";
-    chip.textContent = COMPONENT_BY_ID.get(componentId)?.label || componentId;
+    chip.textContent = componentLabel(COMPONENT_BY_ID.get(componentId), state.jawMaterial) || componentId;
     selectedEl.appendChild(chip);
   }
 }

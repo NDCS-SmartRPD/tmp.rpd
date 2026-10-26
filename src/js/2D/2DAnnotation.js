@@ -11,6 +11,9 @@ import {
   COMPONENT_BY_ID,
   COMPONENT_CATALOG,
   COMPONENT_TABS,
+  componentLabel,
+  isComponentHiddenForMaterial,
+  isTabHiddenForMaterial,
   getDefaultMeshIdForDesignMode,
   isClaspComponent,
   isMeshComponent,
@@ -500,6 +503,7 @@ export function renderJaws() {
 // Shows the denture-base material in the corner badge, hidden while null. Called from
 // renderJaws so it stays fresh across placement, load, undo/redo and the prompt.
 const JAW_MATERIAL_LABELS = { 0: "Metal", 2: "Full Acrylic" };
+const COMPONENTS_HEADING_BY_MATERIAL = { 0: "Metal Component", 2: "Acrylic Component" };
 let lastNotifiedJawMaterial;
 export function updateJawMaterialBadge() {
   // Other panels label by material too (the Extra 3D slot rows); told once per change.
@@ -507,6 +511,8 @@ export function updateJawMaterialBadge() {
     lastNotifiedJawMaterial = state.jawMaterial;
     window.dispatchEvent(new CustomEvent("jaw-material-change"));
   }
+  const heading = document.getElementById("componentsHeading");
+  if (heading) heading.textContent = COMPONENTS_HEADING_BY_MATERIAL[state.jawMaterial] || "Components";
   const badge = document.getElementById("jawMaterialBadge");
   if (!badge) return;
   const label = JAW_MATERIAL_LABELS[state.jawMaterial];
@@ -579,7 +585,7 @@ async function applyQuickPickSelection(tabId, componentId, options = {}) {
         const placement = await import("./annotationPlacement.js");
         placement.extendMajorConnectorsOntoTeeth([placeOnToothId]);
         teethModel.syncToothComponentsFromPlacements(tooth);
-        const label = COMPONENT_BY_ID.get(id)?.label || id;
+        const label = componentLabel(COMPONENT_BY_ID.get(id), state.jawMaterial) || id;
         setMessage(`Placed ${label} on tooth ${placeOnToothId}.`, false);
         import("./annotationCatalog.js")
           .then(({ renderComponentCatalog }) => renderComponentCatalog())
@@ -602,6 +608,14 @@ async function applyQuickPickSelection(tabId, componentId, options = {}) {
   }
 }
 
+// The full-acrylic desktop wheel: SS wire, acrylic, ball and Roach clasps.
+const ACRYLIC_RADIAL_CLASPS = [
+  { componentId: "retainer-clasp", pos: "top-left" },
+  { componentId: "acrylic-clasp", pos: "top-right" },
+  { componentId: "ball-clasp", pos: "bottom-left" },
+  { componentId: "roach-clasp", pos: "bottom-right" },
+];
+
 /**
  * Present-tooth quick picker (Rest / Bar / Recip / Clasp). Touch gets a centred sheet;
  * mouse gets the radial wheel, whose tiny labels are unusable with a finger.
@@ -609,13 +623,22 @@ async function applyQuickPickSelection(tabId, componentId, options = {}) {
 export function showPresentToothRadialQuickPick(toothId, clientX, clientY) {
   closePresentToothRadialQuickPick();
 
-  // Desktop radial: 4 hand-curated quick-picks + a RECIP submenu, anchored at the click.
-  const radialMain = [
-    { label: "REST", tab: "rests", componentId: "rest-seat", pos: "top-left" },
-    { label: "BAR", tab: "bars", componentId: "bar-i", pos: "top-right" },
-    { label: "RECIP", menu: "recip", pos: "bottom-left" },
-    { label: "CLASP", tab: "clasps", componentId: "retainer-clasp", pos: "bottom-right" },
-  ];
+  // Desktop radial: 4 hand-curated quick-picks + a RECIP submenu, anchored at the click. Full
+  // acrylic picks its four clasps instead.
+  const radialMain =
+    state.jawMaterial === 2
+      ? ACRYLIC_RADIAL_CLASPS.map(({ componentId, pos }) => ({
+          label: componentLabel(COMPONENT_BY_ID.get(componentId), state.jawMaterial),
+          tab: "clasps",
+          componentId,
+          pos,
+        }))
+      : [
+          { label: "REST", tab: "rests", componentId: "rest-seat", pos: "top-left" },
+          { label: "BAR", tab: "bars", componentId: "bar-i", pos: "top-right" },
+          { label: "RECIP", menu: "recip", pos: "bottom-left" },
+          { label: "CLASP", tab: "clasps", componentId: "retainer-clasp", pos: "bottom-right" },
+        ].filter((action) => !isComponentHiddenForMaterial(action.componentId, state.jawMaterial));
   const radialRecip = [
     {
       label: "RECIP CLASP",
@@ -626,12 +649,12 @@ export function showPresentToothRadialQuickPick(toothId, clientX, clientY) {
     { label: "RECIP PLATE", tab: "plate", componentId: "plate-prox", pos: "top-right" },
     { label: "RECIP MESH", tab: "plate", componentId: "plate-crossmesh", pos: "bottom-left" },
     { label: "BACK", menu: "main", pos: "bottom-right", icon: "../../back.png" },
-  ];
+  ].filter((action) => !isComponentHiddenForMaterial(action.componentId, state.jawMaterial));
 
   // Mobile sheet: every COMPONENT_TABS category except the CASE NOTE form, drilling
   // category -> items -> commit. Replaces the #componentTabs strip, hidden on touch.
   const sheetCategories = COMPONENT_TABS
-    .filter((tab) => tab.kind !== "form")
+    .filter((tab) => tab.kind !== "form" && !isTabHiddenForMaterial(tab.id, state.jawMaterial))
     .map((tab) => ({
       label: tab.label,
       tabId: tab.id,
@@ -783,12 +806,6 @@ function buildToothQuickPickSheet(toothId, categories, commit) {
     tile.className = "tooth-quickpick-tile";
     if (options.tileClass) tile.classList.add(options.tileClass);
     tile.setAttribute("aria-label", label);
-    if (options.disabled) {
-      tile.disabled = true;
-      tile.classList.add("is-disabled");
-      tile.setAttribute("aria-disabled", "true");
-      if (options.disabledTitle) tile.title = options.disabledTitle;
-    }
     if (iconPath) {
       if (options.iconAsMask) {
         const maskEl = document.createElement("span");
@@ -840,7 +857,8 @@ function buildToothQuickPickSheet(toothId, categories, commit) {
     grid.classList.add("is-items-view");
     grid.innerHTML = "";
     const items = COMPONENT_CATALOG.filter(
-      (entry) => entry.tab === cat.tabId && entry.hidden !== true
+      (entry) =>
+        entry.tab === cat.tabId && entry.hidden !== true && !isComponentHiddenForMaterial(entry.id, state.jawMaterial)
     );
     if (!items.length) {
       const empty = document.createElement("div");
@@ -849,25 +867,20 @@ function buildToothQuickPickSheet(toothId, categories, commit) {
       grid.appendChild(empty);
       return;
     }
-    // Same material gate the desktop catalog applies to its items — the upper palatal
-    // majors and mesh are dead in a full-acrylic case.
-    const blockedByMaterial = meshAnnotationEnv()?.isComponentBlockedByMaterial;
     for (const item of items) {
       // Mesh icons are white silhouettes recoloured by CSS mask — except Mesh Flange, whose
       // PNG is full-colour artwork that a mask collapses to a violet square.
       const tintMesh = isMeshComponent(item.id) && item.id !== "mesh-flange";
-      const blocked = Boolean(blockedByMaterial?.(item.id));
-      const opts = { disabled: blocked };
-      if (blocked) opts.disabledTitle = `${item.label} — not available for a full acrylic case`;
+      const opts = {};
       if (tintMesh) {
         opts.iconAsMask = true;
         opts.tileClass = "tooth-quickpick-tile--mesh";
       }
       grid.appendChild(
         buildTile(
-          item.label,
+          componentLabel(item, state.jawMaterial),
           item.icon,
-          () => commit({ tab: item.tab, componentId: item.id, label: item.label }),
+          () => commit({ tab: item.tab, componentId: item.id, label: componentLabel(item, state.jawMaterial) }),
           opts
         )
       );
@@ -897,6 +910,11 @@ export function closeRemoveComponentDialog() {
 function formatPlacementSurfaceForRemoveUi(componentId, surface) {
   if (!surface || isClaspComponent(componentId)) return "";
   return String(surface).replace(/_/g, " ");
+}
+
+// `removeLabel` tells apart parts that share a catalog name and can sit on the same tooth.
+function formatComponentLabelForRemoveUi(def, componentId) {
+  return def?.removeLabel || componentLabel(def, state.jawMaterial) || componentId;
 }
 
 export async function openRemoveComponentPicker(toothId, jaw, anchorEvent) {
@@ -975,7 +993,7 @@ export async function openRemoveComponentPicker(toothId, jaw, anchorEvent) {
 
   visiblePlacements.forEach((entry) => {
     const def = COMPONENT_BY_ID.get(entry.componentId);
-    const label = def?.label || entry.componentId;
+    const label = formatComponentLabelForRemoveUi(def, entry.componentId);
     const surf = formatPlacementSurfaceForRemoveUi(entry.componentId, entry.surface);
     const btn = document.createElement("button");
     btn.type = "button";
@@ -1003,7 +1021,7 @@ export async function openRemoveComponentPicker(toothId, jaw, anchorEvent) {
       }
       placement.applyRemovalSideEffectsForTooth(t, removed);
       const defR = removed ? COMPONENT_BY_ID.get(removed.componentId) : null;
-      const name = defR?.label || removed?.componentId || "item";
+      const name = formatComponentLabelForRemoveUi(defR, removed?.componentId) || "item";
       setMessage(`Removed ${name} from tooth ${toothId}.`, false);
       finish();
       renderJaws();
@@ -1188,7 +1206,10 @@ async function maybePromptRestoreLocalDraft(serverSnapshot) {
   } finally {
     history.restoring = false;
   }
-  await refreshUiAfterHistoryRestore();
+  // Like any case open, the restored draft starts in select (unlocked) mode.
+  state.locks = { upper: false, lower: false };
+  const locks = await import("./annotationLocks.js");
+  locks.syncDesignModeWithLocks(false);
   history.past = [serverSnapshot, cloneStateForHistory()];
   history.future = [];
   updateUndoRedoButtons();

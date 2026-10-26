@@ -1,8 +1,14 @@
 import {
+  componentLabel,
   ASSEMBLY_REST_SUGGESTION_IDS,
   augmentTeethForPalatalBarConnectorNeighbors,
   BALL_CLASP_COMPONENT_ID,
+  ACRYLIC_CLASP_COMPONENT_ID,
+  ADAMS_CLASP_COMPONENT_ID,
+  canPlaceAdamsClasp,
   canPlaceBallClasp,
+  getAdamsClaspVisual,
+  isAdamsClaspComponent,
   COMPONENT_BY_ID,
   getBallClaspSurfacesForTooth,
   getBallClaspVisual,
@@ -78,6 +84,7 @@ import {
   isPalatalBarDistalRunEnd,
   getMajorConnectorAssetReference,
   getPalatalPlateOverlayIndexFromUpperPlacements,
+  ROACH_CLASP_COMPONENT_ID,
    } from "./components.js";
 import {
   ANTERIOR_REST_SURFACE_DIALOG_TEETH,
@@ -439,7 +446,7 @@ function appendPlacedComponentMarkers(group, tooth, toothId, jaw) {
     if (!canRemoveComponentId(placement.componentId)) return;
     event.stopPropagation();
     removePlacement(tooth, placement.componentId, surface);
-    const label = COMPONENT_BY_ID.get(placement.componentId)?.label || placement.componentId;
+    const label = componentLabel(COMPONENT_BY_ID.get(placement.componentId), state.jawMaterial) || placement.componentId;
     setMessage(message || `Removed ${label} (${surface}) from tooth ${toothId}.`, false);
     renderJaw(jaw);
   };
@@ -479,7 +486,7 @@ function appendPlacedComponentMarkers(group, tooth, toothId, jaw) {
           ...centeredImageAttrs(assetHref, width, height),
           class: `rest-placement-image rest-placement-${surface}${
             placement.componentId === REST_CALIBRATION_COMPONENT_ID ? " is-placed-rest-seat" : ""
-          }`,
+          }${state.jawMaterial === 2 ? " is-acrylic" : ""}`,
           "data-surface": surface,
           "data-component-id": placement.componentId,
         })
@@ -497,7 +504,7 @@ function appendPlacedComponentMarkers(group, tooth, toothId, jaw) {
         r: String(radius),
         class: `rest-placement-marker rest-placement-${surface}${
           placement.componentId === REST_CALIBRATION_COMPONENT_ID ? " is-placed-rest-seat" : ""
-        }`,
+        }${state.jawMaterial === 2 ? " is-acrylic" : ""}`,
         "data-surface": surface,
         "data-component-id": placement.componentId,
       });
@@ -543,12 +550,15 @@ function appendPlacedComponentMarkers(group, tooth, toothId, jaw) {
       const width = imageSize.width * claspScale;
       const height = imageSize.height * claspScale;
 
-      // Full acrylic draws the retainer, a wire clasp, in the metal grey.
-      const acrylicWire = isRetainer && state.jawMaterial === 2;
+      // Full acrylic draws the retainer, a wire clasp, in the metal grey; the acrylic clasp is
+      // always the flange pink.
+      const isAcrylicClasp = placement.componentId === ACRYLIC_CLASP_COMPONENT_ID;
+      const acrylicWire = isRetainer && !isAcrylicClasp && state.jawMaterial === 2;
+      const tintClass = isAcrylicClasp ? " is-acrylic-clasp" : acrylicWire ? " is-acrylic" : "";
       outerG.appendChild(
         svgEl("image", {
           ...centeredImageAttrs(assetHref, width, height),
-          class: `clasp-placement-image clasp-placement-${surface}${acrylicWire ? " is-acrylic" : ""}`,
+          class: `clasp-placement-image clasp-placement-${surface}${tintClass}`,
           "data-surface": surface,
           "data-component-id": placement.componentId,
         })
@@ -614,7 +624,9 @@ function appendPlacedComponentMarkers(group, tooth, toothId, jaw) {
     outerG.appendChild(
       svgEl("image", {
         ...centeredImageAttrs(href, width, height),
-        class: `bar-placement-image bar-placement-${barSurface}`,
+        class: `bar-placement-image bar-placement-${barSurface}${
+          placement.componentId === ROACH_CLASP_COMPONENT_ID ? " is-roach" : ""
+        }`,
         "data-surface": barSurface,
         "data-component-id": placement.componentId,
       })
@@ -1314,6 +1326,49 @@ function appendBallClaspSuggestions(group, tooth, toothId, jaw) {
   }
 }
 
+// One Adams clasp, drawn in its tooth image's frame so it scales and mirrors with the tooth;
+// the tint sits outside the flip.
+function buildAdamsClaspGroup(visual, scale, className, artClass) {
+  const g = svgEl("g", { class: className });
+  const art = svgEl("g", { class: artClass });
+  const frame = svgEl("g", { transform: `scale(${scale.x.toFixed(3)} ${scale.y.toFixed(3)})` });
+  frame.appendChild(
+    svgEl("image", {
+      href: visual.href,
+      x: visual.x.toFixed(2),
+      y: visual.y.toFixed(2),
+      width: visual.width.toFixed(2),
+      height: visual.height.toFixed(2),
+      preserveAspectRatio: "xMidYMid meet",
+      "data-component-id": ADAMS_CLASP_COMPONENT_ID,
+    })
+  );
+  art.appendChild(frame);
+  g.appendChild(art);
+  return g;
+}
+
+// Placed Adams clasps, in the same top layer as ball clasps so neighbours don't cover the arrows.
+function appendAdamsClaspVisuals(group, tooth, toothId, jaw) {
+  if (!(tooth.componentPlacements || []).some((entry) => isAdamsClaspComponent(entry.componentId))) return;
+  const visual = getAdamsClaspVisual(toothId);
+  if (!visual) return;
+  const scale = getToothImageScale(toothId, jaw);
+  group.appendChild(buildAdamsClaspGroup(visual, scale, "adams-clasp-placement", "adams-clasp-art"));
+}
+
+// A faint Adams clasp on each free present premolar/molar; clicking the tooth places it.
+function appendAdamsClaspSuggestions(group, tooth, toothId, jaw) {
+  if (state.suppressArchPlacementSuggestions) return;
+  if (!state.designMode || !isAdamsClaspComponent(state.selectedComponentId)) return;
+  if (!tooth.isPresent || !canPlaceAdamsClasp(toothId)) return;
+  if ((tooth.componentPlacements || []).some((entry) => isAdamsClaspComponent(entry.componentId))) return;
+  const visual = getAdamsClaspVisual(toothId);
+  if (!visual) return;
+  const scale = getToothImageScale(toothId, jaw);
+  group.appendChild(buildAdamsClaspGroup(visual, scale, "adams-clasp-suggestion", "adams-clasp-art is-ghost"));
+}
+
 function showBarSuggestions() {
   if (!state.designMode) return false;
   const sel = COMPONENT_BY_ID.get(state.selectedComponentId || "");
@@ -1437,23 +1492,28 @@ function appendPalatalPlateArchOverlay(svg) {
   svg.appendChild(g);
 }
 
-// Compose one tooth image with jaw-specific scaling and mirroring.
-function createToothVisual(toothId, jaw) {
+// The tooth image's scale, negative in x where the tooth art is mirrored (Q2/Q3).
+function getToothImageScale(toothId, jaw) {
   const placement = getToothPlacement(jaw, toothId) || {};
   const jawFlipX = JAW_IMAGE_FLIP_X[jaw] ?? 1;
   const flipX = (placement.scaleX ?? 1) * jawFlipX;
   const flipY = placement.scaleY ?? 1;
 
-  const { mirrored, sourceToothId } = getToothAssetSpec(toothId);
+  const { mirrored } = getToothAssetSpec(toothId);
   const scaleBoost = TOOTH_SCALE_OVERRIDE[toothId] || 1;
   const base = getToothScale(toothId, jaw) * 0.24 * scaleBoost;
 
-  const scaleX = (mirrored ? -base : base) * flipX;
-  const scaleY = base * flipY;
+  return { x: (mirrored ? -base : base) * flipX, y: base * flipY };
+}
+
+// Compose one tooth image with jaw-specific scaling and mirroring.
+function createToothVisual(toothId, jaw) {
+  const { sourceToothId } = getToothAssetSpec(toothId);
+  const scale = getToothImageScale(toothId, jaw);
 
   const visual = svgEl("g", {
     class: "tooth-visual",
-    transform: `scale(${scaleX.toFixed(3)} ${scaleY.toFixed(3)})`
+    transform: `scale(${scale.x.toFixed(3)} ${scale.y.toFixed(3)})`
   });
 
   visual.appendChild(
@@ -1865,6 +1925,8 @@ function appendPalatalStrapArchOverlay(svg) {
 
 export {
   applyToothStatusClass,
+  appendAdamsClaspSuggestions,
+  appendAdamsClaspVisuals,
   appendBallClaspSuggestions,
   appendBallClaspVisuals,
   appendPlacedComponentMarkers,

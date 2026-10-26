@@ -517,7 +517,10 @@ describe("full acrylic places a major exactly as metal does", () => {
   });
 });
 
-/** Full acrylic refuses metal mesh and the open palatal majors; rests and bars place as on metal. */
+/**
+ * Full acrylic refuses metal mesh, the open palatal majors, and what its catalog hides (bars,
+ * reciprocating and ring clasps); rests and the wire clasp place as on metal.
+ */
 describe("full acrylic material gate", () => {
   beforeEach(() => {
     state.jawMaterial = 2;
@@ -530,11 +533,21 @@ describe("full acrylic material gate", () => {
   it.each([
     ["rest-seat", "mesial"],
     ["rest-onlay", "mesial"],
-    ["bar-i", "bar_d1_distal"],
+    ["retainer-clasp", "mesial_buccal"],
   ])("places %s", (componentId, surface) => {
     const t = toothAt("36");
     place(componentId, "36", surface);
     expect(t.components).toContain(componentId);
+  });
+
+  it.each([
+    ["bar-i", "bar_d1_distal"],
+    ["reciprocating-clasp", "mesial_lingual"],
+    ["ring-clasp", "mesial_buccal"],
+  ])("refuses %s, hidden from the acrylic catalog", (componentId, surface) => {
+    const t = toothAt("36");
+    place(componentId, "36", surface);
+    expect(t.components).not.toContain(componentId);
   });
 
   it("still refuses metal mesh but takes the flange", () => {
