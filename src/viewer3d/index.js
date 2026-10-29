@@ -13,6 +13,7 @@ import {
   isSupportedMeshFile,
   meshFileKind,
 } from "./meshFileSupport.js";
+import { prepareMeshUpload } from "./plyTextureBake.js";
 
 // Import the OFFLoader class
 import { OFFLoader } from "./OFFLoader.js";
@@ -6213,17 +6214,24 @@ function removeViewerLoadingScreen() {
 
   // Validates, uploads and renders one File into one slot. Shared by the file
   // picker and drag-and-drop, which each just hand it a File.
-  async function uploadFileToSlot(file, slot, statusEl) {
-    if (!file) return;
-    if (!isSupportedMeshFile(file.name)) {
+  async function uploadFileToSlot(files, slot, statusEl) {
+    const selection = Array.isArray(files) ? files : [files];
+    const selectedMesh = selection.find((entry) => isSupportedMeshFile(entry?.name));
+    if (!selectedMesh) {
       statusEl.textContent = "Only .stl and .ply files are supported.";
       return;
     }
 
-    statusEl.textContent = `Uploading ${file.name}…`;
+    statusEl.textContent = `Preparing ${selectedMesh.name}…`;
     setUploadPromptBusy(true);
     setSlotTileBusy(slot, "Reading file");
     try {
+      const prepared = await prepareMeshUpload(selection, PLYLoader);
+      const file = prepared.file;
+      if (prepared.textureMissing) {
+        statusEl.textContent = "Select the PLY and its referenced JPG together.";
+        return;
+      }
       const base64 = await fileToBase64(file);
       await uploadSlotStl(
         JSON.stringify([
@@ -6272,11 +6280,12 @@ function removeViewerLoadingScreen() {
   async function pickAndUploadSlot(slot, statusEl) {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".stl,.ply";
+    input.accept = ".stl,.ply,.jpg,.jpeg";
+    input.multiple = true;
     input.hidden = true;
     document.body.appendChild(input);
     const file = await new Promise((resolve) => {
-      input.addEventListener("change", () => resolve(input.files?.[0] || null));
+      input.addEventListener("change", () => resolve(Array.from(input.files || [])));
       input.click();
     });
     input.remove();
@@ -6307,8 +6316,8 @@ function removeViewerLoadingScreen() {
         statusEl.textContent = "Delete the existing file before replacing it.";
         return;
       }
-      const file = event.dataTransfer.files?.[0];
-      if (file) uploadFileToSlot(file, slot, statusEl);
+      const files = Array.from(event.dataTransfer.files || []);
+      if (files.length) uploadFileToSlot(files, slot, statusEl);
     });
   }
 
@@ -6435,7 +6444,7 @@ function removeViewerLoadingScreen() {
     if (sub) {
       sub.textContent = anyUploaded
         ? "Add another file to an empty slot, or close this to view the design."
-        : "Add an STL to a slot, or open the 3D scan.";
+        : "Add an STL, or select a 3Shape PLY and its JPG together.";
     }
     const closeBtn = prompt.querySelector(".dup-open-scan");
     if (closeBtn) {

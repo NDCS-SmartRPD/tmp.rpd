@@ -22,6 +22,7 @@ import {
 import { updateCaseStatus, STATUS_3D_DESIGN_APPROVED } from "./caseNote.js";
 import { confirmPreview3DApproval, sendApprovalEmails } from "./preview3DApproval.js";
 import { isSupportedMeshFile, meshFileKind } from "../../viewer3d/meshFileSupport.js";
+import { prepareMeshUpload } from "../../viewer3d/plyTextureBake.js";
 
 // Re-exported: sibling 2D modules import it from here.
 export { getLoggedInUser };
@@ -3096,16 +3097,17 @@ async function uploadJawThumbnail(jaw) {
 // ---- Jaw STL upload and removal ------------------------------------------
 
 // One-shot .stl file picker; the input is removed as soon as a pick lands.
-function pickStlFile(onPick, accept = ".stl") {
+function pickStlFile(onPick, accept = ".stl", multiple = false) {
   const input = document.createElement("input");
   input.type = "file";
   input.accept = accept;
+  input.multiple = multiple;
   input.hidden = true;
   document.body.appendChild(input);
   input.addEventListener("change", () => {
-    const file = input.files?.[0];
+    const files = Array.from(input.files || []);
     input.remove();
-    if (file) onPick(file);
+    if (files.length) onPick(multiple ? files : files[0]);
   });
   input.click();
 }
@@ -3847,7 +3849,7 @@ async function deleteExtraStl(slotNumber) {
 
 // Upload a user-picked STL into a specific slot (or the next free slot when no
 // target is given), then render it.
-async function uploadExtraStl(file, targetSlot = null) {
+async function uploadExtraStl(files, targetSlot = null) {
   if (!state.caseIntID) {
     setMessage?.("Open a case before uploading a 3D file.");
     return;
@@ -3881,8 +3883,24 @@ async function uploadExtraStl(file, targetSlot = null) {
     setMessage?.("All 4 extra 3D file slots are in use. Delete one first.");
     return;
   }
-  if (!isSupportedMeshFile(file.name)) {
+  const selection = Array.isArray(files) ? files : [files];
+  if (!selection.some((entry) => isSupportedMeshFile(entry?.name))) {
     setMessage?.("Only .stl and .ply files are supported.");
+    return;
+  }
+
+  await ensureThreeDeps();
+  let prepared;
+  try {
+    prepared = await prepareMeshUpload(selection, PLYLoader);
+  } catch (error) {
+    console.error("[preview3D] PLY texture bake failed", error);
+    setMessage?.("The PLY texture could not be read. Please select the original PLY and JPG again.");
+    return;
+  }
+  const file = prepared.file;
+  if (prepared.textureMissing) {
+    setMessage?.("Select the PLY and its referenced JPG together to include the 3Shape heatmap.");
     return;
   }
 
@@ -3964,7 +3982,11 @@ function cancelExtraStlUpload(slot) {
 }
 
 function pickAndUploadExtraStl(slot) {
-  pickStlFile((file) => uploadExtraStl(file, slot), ".stl,.ply");
+  pickStlFile(
+    (files) => uploadExtraStl(files, slot),
+    ".stl,.ply,.jpg,.jpeg",
+    true
+  );
 }
 
 // Toggle ONE uploaded extra STL (clicking its file icon). Each slot has its own group in
@@ -4447,10 +4469,10 @@ function buildUpload3dSlotRow(slot) {
   const uploadLink = document.createElement("a");
   uploadLink.href = "#";
   uploadLink.className = "upload3d-upload-link";
-  uploadLink.textContent = "Upload .stl or .ply";
+  uploadLink.textContent = "Upload .stl or .ply + texture";
   uploadLink.setAttribute("role", "button");
   uploadLink.setAttribute("aria-label", `Upload ${slotLabel(slot)}`);
-  uploadLink.title = `Drag & drop a .stl or .ply here, or click to upload ${slotLabel(slot)}`;
+  uploadLink.title = `For 3Shape, select or drop the .ply and its .jpg together for ${slotLabel(slot)}`;
   uploadLink.addEventListener("click", (e) => {
     e.preventDefault();
     pickAndUploadExtraStl(slot);
@@ -4546,13 +4568,13 @@ function enableSlotDropZone(el, slot) {
     el.classList.remove("is-dragover");
     if (!dragEventHasFiles(e)) return;
     e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (!file) return;
-    if (!isSupportedMeshFile(file.name)) {
+    const files = Array.from(e.dataTransfer.files || []);
+    if (!files.length) return;
+    if (!files.some((file) => isSupportedMeshFile(file.name))) {
       setMessage?.("Only .stl and .ply files are supported.");
       return;
     }
-    uploadExtraStl(file, slot);
+    uploadExtraStl(files, slot);
   });
 }
 
