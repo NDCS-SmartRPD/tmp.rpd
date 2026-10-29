@@ -1,6 +1,7 @@
 import fs from "node:fs";
 
 const source = fs.readFileSync("src/js/2D/preview3D.js", "utf8");
+const styles = fs.readFileSync("css/2Dannotation.css", "utf8");
 
 describe("2D preview tab lifecycle", () => {
   test("loads extras only from the Extra 3D tab and keeps them cached", () => {
@@ -43,5 +44,23 @@ describe("2D preview tab lifecycle", () => {
     expect(downloadMenu).toContain("fetchExtraStlSlot(slotNumber)");
     expect(downloadMenu).not.toContain("openUpload3dModal()");
     expect(downloadMenu).not.toContain("renderExtraStl(");
+  });
+
+  test("shows non-blocking responsive progress for every jaw-profile download", () => {
+    const downloadMenu = source.slice(
+      source.indexOf("function ensureDownloadJawProfileModal"),
+      source.indexOf("// ---- Jaw panel rows")
+    );
+
+    expect(downloadMenu).toContain('role", "status"');
+    expect(downloadMenu).toContain('role="progressbar"');
+    expect(downloadMenu).toContain("beginDownloadProgress");
+    expect(downloadMenu).toContain("updateDownloadProgress");
+    expect(downloadMenu).toContain("finishDownloadProgress");
+    expect(downloadMenu).toContain("generateAsync({ type: \"blob\" },");
+    expect(downloadMenu).toContain("await saveAsJpeg()");
+    expect(styles).toContain(".jaw-dl-progress");
+    expect(styles).toContain("pointer-events: none");
+    expect(styles).toContain("env(safe-area-inset-bottom");
   });
 });

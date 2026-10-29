@@ -4600,7 +4600,7 @@ function ensureDownloadJawProfileModal() {
   jpegBtn.addEventListener("click", () => {
     closeDownloadJawProfileModal();
     // Reuse the existing "Save as JPEG" flow (also re-uploads the 2D thumbnail).
-    saveAsJpeg();
+    downloadJawProfileJpeg();
   });
 
   options.appendChild(stlBtn);
@@ -4640,6 +4640,66 @@ function closeDownloadJawProfileModal() {
   }
 }
 
+let activeDownloadProgress = null;
+let downloadProgressTimer = null;
+
+function ensureDownloadProgress() {
+  let progress = document.getElementById("jawDownloadProgress");
+  if (progress) return progress;
+  progress = document.createElement("div");
+  progress.id = "jawDownloadProgress";
+  progress.className = "jaw-dl-progress is-hidden is-indeterminate";
+  progress.setAttribute("role", "status");
+  progress.setAttribute("aria-live", "polite");
+  progress.innerHTML =
+    '<div class="jaw-dl-progress-copy">Preparing download…</div>' +
+    '<div class="jaw-dl-progress-track" role="progressbar" aria-label="Download preparation progress">' +
+      '<div class="jaw-dl-progress-fill"></div>' +
+    '</div>';
+  document.body.appendChild(progress);
+  return progress;
+}
+
+function beginDownloadProgress(label) {
+  const token = Symbol("download-progress");
+  activeDownloadProgress = token;
+  clearTimeout(downloadProgressTimer);
+  const progress = ensureDownloadProgress();
+  progress.querySelector(".jaw-dl-progress-copy").textContent = label;
+  progress.querySelector(".jaw-dl-progress-track").removeAttribute("aria-valuenow");
+  progress.classList.remove("is-hidden", "is-error");
+  progress.classList.add("is-indeterminate");
+  return token;
+}
+
+function updateDownloadProgress(token, label, percent) {
+  if (token !== activeDownloadProgress) return;
+  const progress = ensureDownloadProgress();
+  const value = Math.max(0, Math.min(100, Math.round(percent)));
+  progress.querySelector(".jaw-dl-progress-copy").textContent = label;
+  progress.querySelector(".jaw-dl-progress-track").setAttribute("aria-valuenow", String(value));
+  progress.querySelector(".jaw-dl-progress-fill").style.width = `${value}%`;
+  progress.classList.remove("is-indeterminate");
+}
+
+function finishDownloadProgress(token, label, isError = false) {
+  if (token !== activeDownloadProgress) return;
+  updateDownloadProgress(token, label, 100);
+  const progress = ensureDownloadProgress();
+  progress.classList.toggle("is-error", isError);
+  downloadProgressTimer = setTimeout(() => {
+    if (token !== activeDownloadProgress) return;
+    progress.classList.add("is-hidden");
+    activeDownloadProgress = null;
+  }, isError ? 3500 : 1800);
+}
+
+async function downloadJawProfileJpeg() {
+  const token = beginDownloadProgress("Preparing JPEG…");
+  const saved = await saveAsJpeg();
+  finishDownloadProgress(token, saved ? "JPEG downloaded" : "JPEG export failed", !saved);
+}
+
 // Collect upper + lower jaw STLs as { jaw, data(base64), filename }. Prefers the
 // jaws currently shown in the 3D preview; falls back to a backend fetch.
 async function collectJawStlFiles() {
@@ -4667,18 +4727,22 @@ async function downloadJawStlsAsZip() {
     setMessage("ZIP library failed to load — cannot download STL files.", true);
     return;
   }
+  const progressToken = beginDownloadProgress("Preparing jaw files…");
   try {
     setMessage("Preparing STL download…", false);
     const jaws = await collectJawStlFiles();
     if (!jaws.length) {
       setMessage("No jaw STL files found for this case.", true);
+      finishDownloadProgress(progressToken, "No jaw files found", true);
       return;
     }
     const zip = new window.JSZip();
     jaws.forEach(({ jaw, data }) => {
       zip.file(`${jaw}.stl`, jawDataToStlBytes(data));
     });
-    const blob = await zip.generateAsync({ type: "blob" });
+    const blob = await zip.generateAsync({ type: "blob" }, ({ percent }) => {
+      updateDownloadProgress(progressToken, "Preparing jaw ZIP…", 15 + percent * 0.85);
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -4688,9 +4752,11 @@ async function downloadJawStlsAsZip() {
     a.remove();
     URL.revokeObjectURL(url);
     setMessage(`Downloaded ${jaws.length} jaw STL file(s) as ZIP.`, false);
+    finishDownloadProgress(progressToken, "Jaw ZIP downloaded");
   } catch (err) {
     console.error("[preview3D] STL zip download failed", err);
     setMessage("Failed to download STL files.", true);
+    finishDownloadProgress(progressToken, "Jaw download failed", true);
   }
 }
 
@@ -4708,17 +4774,20 @@ function cachedExtraStlFiles() {
 
 // Downloading does not enter the Extra 3D tab or parse/render a mesh. If that tab has
 // already loaded, use its cached payloads; otherwise fetch the four fixed slots directly.
-async function collectExtraStlFiles() {
+async function collectExtraStlFiles(onProgress) {
   if (preview3DState.extrasLoadPromise) {
     await preview3DState.extrasLoadPromise;
   }
 
   const files = cachedExtraStlFiles();
   const cachedSlots = new Set(files.map(({ slotNumber }) => slotNumber));
-  for (const slotNumber of EXTRA_STL_SLOTS) {
-    if (cachedSlots.has(slotNumber)) continue;
-    const file = await fetchExtraStlSlot(slotNumber);
-    if (file) files.push(file);
+  for (let i = 0; i < EXTRA_STL_SLOTS.length; i += 1) {
+    const slotNumber = EXTRA_STL_SLOTS[i];
+    if (!cachedSlots.has(slotNumber)) {
+      const file = await fetchExtraStlSlot(slotNumber);
+      if (file) files.push(file);
+    }
+    onProgress?.((i + 1) / EXTRA_STL_SLOTS.length);
   }
   return files;
 }
@@ -4728,11 +4797,15 @@ async function downloadExtraStlsAsZip() {
     setMessage("ZIP library failed to load — cannot download Extra 3D files.", true);
     return;
   }
+  const progressToken = beginDownloadProgress("Finding Extra 3D files…");
   try {
     setMessage("Preparing Extra 3D download…", false);
-    const files = await collectExtraStlFiles();
+    const files = await collectExtraStlFiles((fraction) => {
+      updateDownloadProgress(progressToken, "Collecting Extra 3D files…", fraction * 35);
+    });
     if (!files.length) {
       setMessage("No Extra 3D files found for this case.", true);
+      finishDownloadProgress(progressToken, "No Extra 3D files found", true);
       return;
     }
 
@@ -4741,7 +4814,9 @@ async function downloadExtraStlsAsZip() {
       const safeName = String(filename || `slot${slotNumber}.stl`).replace(/[\\/]/g, "_");
       zip.file(`slot_${slotNumber}_${safeName}`, data, { base64: true });
     });
-    const blob = await zip.generateAsync({ type: "blob" });
+    const blob = await zip.generateAsync({ type: "blob" }, ({ percent }) => {
+      updateDownloadProgress(progressToken, "Preparing Extra 3D ZIP…", 35 + percent * 0.65);
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -4751,9 +4826,11 @@ async function downloadExtraStlsAsZip() {
     a.remove();
     URL.revokeObjectURL(url);
     setMessage(`Downloaded ${files.length} Extra 3D file(s) as ZIP.`, false);
+    finishDownloadProgress(progressToken, "Extra 3D ZIP downloaded");
   } catch (err) {
     console.error("[preview3D] Extra 3D zip download failed", err);
     setMessage("Failed to download Extra 3D files.", true);
+    finishDownloadProgress(progressToken, "Extra 3D download failed", true);
   }
 }
 
