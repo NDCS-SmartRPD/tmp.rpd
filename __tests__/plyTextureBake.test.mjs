@@ -1,10 +1,37 @@
 import * as THREE from "three";
 import {
   applyTextureToGeometry,
+  geometryToBinaryPly,
   prepareMeshUpload,
 } from "../src/viewer3d/plyTextureBake.js";
 
 describe("applyTextureToGeometry", () => {
+  test("writes compact binary PLY output instead of per-vertex text", () => {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute([
+      0, 0, 0, 1, 0, 0, 0, 1, 0,
+    ], 3));
+    geometry.setAttribute("color", new THREE.Float32BufferAttribute([
+      1, 0, 0, 0, 1, 0, 0, 0, 1,
+    ], 3));
+
+    const output = geometryToBinaryPly(geometry);
+    const marker = new TextEncoder().encode("end_header\n");
+    const headerEnd = output.findIndex((_, index) =>
+      marker.every((byte, offset) => output[index + offset] === byte)
+    ) + marker.length;
+    const header = new TextDecoder().decode(output.subarray(0, headerEnd));
+
+    expect(header).toContain("format binary_little_endian 1.0");
+    expect(output.length).toBe(headerEnd + 3 * 15 + 13);
+    const body = new DataView(output.buffer, output.byteOffset + headerEnd);
+    expect(body.getFloat32(15, true)).toBe(1);
+    expect(Array.from(output.subarray(headerEnd + 12, headerEnd + 15))).toEqual([255, 0, 0]);
+    expect(body.getUint8(45)).toBe(3);
+    expect([body.getInt32(46, true), body.getInt32(50, true), body.getInt32(54, true)])
+      .toEqual([0, 1, 2]);
+  });
+
   test("samples flipped face UVs into linear vertex colours", () => {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.Float32BufferAttribute([
