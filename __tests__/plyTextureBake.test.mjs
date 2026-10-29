@@ -34,9 +34,9 @@ describe("applyTextureToGeometry", () => {
       .toThrow("texture coordinates");
   });
 
-  test("bakes the TextureFile companion into the uploaded PLY", async () => {
+  test("bakes the built-in 3Shape palette without a companion JPG", async () => {
     const ply = [
-      "ply", "format ascii 1.0", "comment TextureFile scan.jpg",
+      "ply", "format ascii 1.0", "comment TextureFile scan.jpg", "comment provider 3Shape",
       "element vertex 3", "property float x", "property float y", "property float z",
       "element face 1", "property list uchar int vertex_indices",
       "property list uchar float texcoord", "end_header",
@@ -44,7 +44,6 @@ describe("applyTextureToGeometry", () => {
     ].join("\n");
     const bytes = new TextEncoder().encode(ply);
     const plyFile = { name: "scan.ply", arrayBuffer: async () => bytes.buffer };
-    const jpgFile = { name: "scan.jpg" };
     global.createImageBitmap = jest.fn(async () => ({ width: 1, height: 1, close() {} }));
     const context = {
       drawImage() {},
@@ -73,7 +72,7 @@ describe("applyTextureToGeometry", () => {
         return geometry;
       }
     }
-    const result = await prepareMeshUpload([plyFile, jpgFile], FakePlyLoader);
+    const result = await prepareMeshUpload([plyFile], FakePlyLoader);
 
     expect(result.baked).toBe(true);
     expect(result.file.name).toBe("scan.ply");

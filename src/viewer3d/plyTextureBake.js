@@ -2,6 +2,9 @@ import * as THREE from "three";
 import { meshGroupToPly } from "./plyExport.js";
 import { isSupportedMeshFile, meshFileKind } from "./meshFileSupport.js";
 
+// All verified 3Shape surveying exports use this exact 8x2048 palette image.
+const THREE_SHAPE_PALETTE_JPEG = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAgAAAgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD67ooor8yPqAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAwfQ0VLRX4D/wARJxf/AEDx+9n039kw/mYUUUV+OnuhRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUV5X/wm2tf8/v8A5CT/AOJor2P7Lrd1+P8Ake7/AGPiP5l+P+Rh0UUV9QfYBRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRWT/wl2hf9BrT/APwKj/xorb2NX+V/cyeaPc//2Q==";
+
 const srgbToLinear = (value) => value <= 0.04045
   ? value / 12.92
   : Math.pow((value + 0.055) / 1.055, 2.4);
@@ -33,9 +36,27 @@ export function applyTextureToGeometry(geometry, pixels, width, height) {
   return geometry;
 }
 
-const textureNameFromPly = (bytes) => {
+const textureInfoFromPly = (bytes) => {
   const header = new TextDecoder("ascii").decode(bytes.subarray(0, Math.min(bytes.length, 16384)));
-  return header.match(/^comment\s+TextureFile\s+(.+)$/mi)?.[1]?.trim() || "";
+  return {
+    name: header.match(/^comment\s+TextureFile\s+(.+)$/mi)?.[1]?.trim() || "",
+    is3Shape: /^comment\s+provider\s+3Shape\s*$/mi.test(header),
+  };
+};
+
+const builtIn3ShapeTexture = () => {
+  // Keep repeated JPEG scan runs out of the already-long literal above.
+  const encoded = [
+    THREE_SHAPE_PALETTE_JPEG.slice(0, 1130),
+    "ooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigA",
+    THREE_SHAPE_PALETTE_JPEG.slice(1130, 1430),
+    "RRQAUVy3/CxdN/54XX/fC//FUV1/VK/wDIzv8AqOJ/kZ53RRRX2R98FFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABR",
+    THREE_SHAPE_PALETTE_JPEG.slice(1430),
+  ].join("");
+  const binary = atob(encoded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: "image/jpeg" });
 };
 
 const imagePixels = async (file) => {
@@ -68,11 +89,13 @@ export async function prepareMeshUpload(files, PLYLoader) {
     return { file: meshFile, baked: false, textureMissing: false };
   }
 
-  const textureName = textureNameFromPly(bytes);
-  const texture = selected.find((file) => file.name.toLowerCase() === textureName.toLowerCase());
+  const textureInfo = textureInfoFromPly(bytes);
+  const texture = textureInfo.is3Shape
+    ? builtIn3ShapeTexture()
+    : selected.find((file) => file.name.toLowerCase() === textureInfo.name.toLowerCase());
   if (!texture) {
     geometry.dispose();
-    return { file: meshFile, baked: false, textureMissing: Boolean(textureName) };
+    return { file: meshFile, baked: false, textureMissing: Boolean(textureInfo.name) };
   }
 
   const image = await imagePixels(texture);

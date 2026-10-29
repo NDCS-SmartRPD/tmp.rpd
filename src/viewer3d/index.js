@@ -6280,12 +6280,11 @@ function removeViewerLoadingScreen() {
   async function pickAndUploadSlot(slot, statusEl) {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".stl,.ply,.jpg,.jpeg";
-    input.multiple = true;
+    input.accept = ".stl,.ply";
     input.hidden = true;
     document.body.appendChild(input);
     const file = await new Promise((resolve) => {
-      input.addEventListener("change", () => resolve(Array.from(input.files || [])));
+      input.addEventListener("change", () => resolve(input.files?.[0] || null));
       input.click();
     });
     input.remove();
@@ -6444,7 +6443,7 @@ function removeViewerLoadingScreen() {
     if (sub) {
       sub.textContent = anyUploaded
         ? "Add another file to an empty slot, or close this to view the design."
-        : "Add an STL, or select a 3Shape PLY and its JPG together.";
+        : "Add an STL or PLY to a slot, or open the 3D scan.";
     }
     const closeBtn = prompt.querySelector(".dup-open-scan");
     if (closeBtn) {

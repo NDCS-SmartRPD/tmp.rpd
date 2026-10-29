@@ -3097,17 +3097,16 @@ async function uploadJawThumbnail(jaw) {
 // ---- Jaw STL upload and removal ------------------------------------------
 
 // One-shot .stl file picker; the input is removed as soon as a pick lands.
-function pickStlFile(onPick, accept = ".stl", multiple = false) {
+function pickStlFile(onPick, accept = ".stl") {
   const input = document.createElement("input");
   input.type = "file";
   input.accept = accept;
-  input.multiple = multiple;
   input.hidden = true;
   document.body.appendChild(input);
   input.addEventListener("change", () => {
-    const files = Array.from(input.files || []);
+    const file = input.files?.[0];
     input.remove();
-    if (files.length) onPick(multiple ? files : files[0]);
+    if (file) onPick(file);
   });
   input.click();
 }
@@ -3982,11 +3981,7 @@ function cancelExtraStlUpload(slot) {
 }
 
 function pickAndUploadExtraStl(slot) {
-  pickStlFile(
-    (files) => uploadExtraStl(files, slot),
-    ".stl,.ply,.jpg,.jpeg",
-    true
-  );
+  pickStlFile((file) => uploadExtraStl(file, slot), ".stl,.ply");
 }
 
 // Toggle ONE uploaded extra STL (clicking its file icon). Each slot has its own group in
@@ -4469,10 +4464,10 @@ function buildUpload3dSlotRow(slot) {
   const uploadLink = document.createElement("a");
   uploadLink.href = "#";
   uploadLink.className = "upload3d-upload-link";
-  uploadLink.textContent = "Upload .stl or .ply + texture";
+  uploadLink.textContent = "Upload .stl or .ply";
   uploadLink.setAttribute("role", "button");
   uploadLink.setAttribute("aria-label", `Upload ${slotLabel(slot)}`);
-  uploadLink.title = `For 3Shape, select or drop the .ply and its .jpg together for ${slotLabel(slot)}`;
+  uploadLink.title = `Drag & drop a .stl or .ply here, or click to upload ${slotLabel(slot)}`;
   uploadLink.addEventListener("click", (e) => {
     e.preventDefault();
     pickAndUploadExtraStl(slot);
