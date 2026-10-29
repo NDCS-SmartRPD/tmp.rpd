@@ -3,11 +3,16 @@ import { lol } from "../shared/crypt.js";
 import { getAppBasePath } from "../shared/pageContext.js";
 import { toast, flashToast, attachThemedCalendar, calIsoFromDate } from "../shared/toast.js";
 import { logApi } from "../shared/apiLog.js";
-import { API_BASE, MACHINE_ID, getLoggedInUser } from "../shared/api.js";
+import { API_BASE, MACHINE_ID, fileToBase64, getLoggedInUser } from "../shared/api.js";
 import { attachUserSuggest, initialsFor } from "../shared/userSuggest.js";
 import { confirmRemoveUserFromCase } from "../shared/caseRoles.js";
 import { normalizeImageFile } from "../shared/imageFiles.js";
 import { createCaseHistory } from "../shared/caseHistory.js";
+import {
+  isSupportedMeshFile,
+  meshFileKind,
+  normalizeJawMeshFile,
+} from "../../viewer3d/meshFileSupport.js";
 
 // Resolved against the app root (everything before "/src/") so it loads from
 // both src/pages/ and the deeper src/pages/admin/, where a fixed path would not.
@@ -18,17 +23,20 @@ function appAsset(relFromRoot) {
 }
 let THREE;
 let STLLoader;
+let PLYLoader;
 
 // Bare specifiers resolve both ways this ships (page importmap, webpack).
 // webpackMode eager keeps one file — deploy.yml ships dist/bundle.js alone.
 async function loadThreeDeps() {
-  if (THREE && STLLoader) return;
-  const [threeMod, loaderMod] = await Promise.all([
+  if (THREE && STLLoader && PLYLoader) return;
+  const [threeMod, stlMod, plyMod] = await Promise.all([
     import(/* webpackMode: "eager" */ "three"),
     import(/* webpackMode: "eager" */ "three/addons/loaders/STLLoader.js"),
+    import(/* webpackMode: "eager" */ "three/addons/loaders/PLYLoader.js"),
   ]);
   THREE = threeMod;
-  STLLoader = loaderMod.STLLoader;
+  STLLoader = stlMod.STLLoader;
+  PLYLoader = plyMod.PLYLoader;
 }
 
 let existingUsers = []; // shared users currently on the case (loaded via role/all/get)
@@ -360,6 +368,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Start-click still finds and uploads the STL; the preview fills in after.
   const processStlFile = (file, target) => {
     if (!file || !target) return;
+    if (!isSupportedMeshFile(file.name)) {
+      toast.warning("Please choose a .stl or .ply file.");
+      return;
+    }
     const jaw = target.dataset.jaw;
 
     const wrapper = document.createElement("div");
@@ -368,7 +380,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     wrapper.file = file;
 
     const img = document.createElement("img");
-    img.alt = jaw === "upper" ? "Upper jaw STL" : "Lower jaw STL";
+    img.alt = jaw === "upper" ? "Upper jaw mesh" : "Lower jaw mesh";
     img.addEventListener("click", () => openImagePreview(img.src));
 
     const remove = document.createElement("div");
@@ -388,7 +400,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     reader.onload = async (e) => {
       try {
         await loadThreeDeps();
-        const loader = new STLLoader();
+        const loader = meshFileKind(file.name) === "ply" ? new PLYLoader() : new STLLoader();
         const geometry = loader.parse(e.target.result);
         const material = new THREE.MeshStandardMaterial({
           color: new THREE.Color(197 / 255, 173 / 255, 137 / 255),
@@ -431,7 +443,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         img.src = dataUrl;
         wrapper.thumbnailDataUrl = dataUrl;
       } catch (err) {
-        console.error("STL 解析失败：", err);
+        console.error("Jaw mesh preview failed:", err);
       }
     };
     reader.readAsArrayBuffer(file);
@@ -512,8 +524,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       e.preventDefault();
       const file = e.dataTransfer.files[0];
       if (!file) return;
-      if (!/\.stl$/i.test(file.name)) {
-        toast.warning("Please drop a .stl file.");
+      if (!isSupportedMeshFile(file.name)) {
+        toast.warning("Please drop a .stl or .ply file.");
         return;
       }
       activeTarget = placeholder;
@@ -995,88 +1007,67 @@ async function uploadSTL(
   }
 
   const file = wrapperEl.file;
-  const reader = new FileReader();
+  try {
+    if (meshFileKind(file.name) === "ply") await loadThreeDeps();
+    const uploadFile = await normalizeJawMeshFile(file, PLYLoader);
+    const base64 = await fileToBase64(uploadFile);
+    const filename = uploadFile.name || `${jawType}.stl`;
 
-  return new Promise((resolve, reject) => {
-    reader.onload = async function (e) {
-      try {
-        const arrayBuffer = e.target.result;
-        const uint8Array = new Uint8Array(arrayBuffer);
-        const binaryStr = uint8Array.reduce(
-          (data, byte) => data + String.fromCharCode(byte),
-          ""
-        );
-        const base64 = btoa(binaryStr);
-        const filename = file.name || `${jawType}.stl`;
+    const rawPayload = [
+      { machine_id, uuid, caseIntID },
+      {
+        case_id,
+        type: jawType, // "upper_jaw" or "lower_jaw"
+        data: base64,
+        filename,
+      },
+    ];
 
-        const rawPayload = [
-          { machine_id, uuid, caseIntID },
-          {
-            case_id,
-            type: jawType, // "upper_jaw" or "lower_jaw"
-            data: base64,
-            filename,
-          },
-        ];
+    // 1) Raw STL bucket — what the web 3D preview pulls from.
+    const rawRes = await fetch(`${API_BASE}/stl/raw`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(rawPayload),
+    });
+    logApi(rawRes, 'POST /stl/raw');
+    if (!rawRes.ok) {
+      console.error(`❌ Failed to upload ${jawType} (raw)`, rawRes.status);
+    } else {
+      console.log(`✅ Uploaded ${jawType} STL (raw)`);
+    }
 
-        // 1) Raw STL bucket — what the web 3D preview pulls from.
-        const rawRes = await fetch(
-          `${API_BASE}/stl/raw`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(rawPayload),
-          }
-        );
-        logApi(rawRes, 'POST /stl/raw');
-        if (!rawRes.ok) {
-          console.error(`❌ Failed to upload ${jawType} (raw)`, rawRes.status);
-        } else {
-          console.log(`✅ Uploaded ${jawType} STL (raw)`);
-        }
-
-        // Processed STL bucket, read by the desktop's RestAPI.CreateSTL. The C#
-        // enum is Upper=0/Lower=1 but the DB column is 1-based, hence 1 and 2.
-        const dbType = jawType === "upper_jaw" ? 1 : jawType === "lower_jaw" ? 2 : 0;
-        const stlPayload = [
-          { machine_id, uuid, caseIntID },
-          {
-            case_id: caseIntID,
-            type: dbType,
-            data: base64,
-            filename,
-          },
-        ];
-        const stlRes = await fetch(
-          `${API_BASE}/stl`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(stlPayload),
-          }
-        );
-        logApi(stlRes, 'POST /stl');
-        if (!stlRes.ok) {
-          let body = "";
-          try { body = await stlRes.text(); } catch {}
-          console.error(
-            `❌ Failed to upload ${jawType} (processed)`,
-            stlRes.status,
-            body.slice(0, 200)
-          );
-        } else {
-          console.log(`✅ Uploaded ${jawType} STL (processed)`);
-        }
-
-        resolve();
-      } catch (err) {
-        console.error(`❌ Error uploading ${jawType}:`, err);
-        resolve();
-      }
-    };
-
-    reader.readAsArrayBuffer(file);
-  });
+    // Processed STL bucket, read by the desktop's RestAPI.CreateSTL. The C#
+    // enum is Upper=0/Lower=1 but the DB column is 1-based, hence 1 and 2.
+    const dbType = jawType === "upper_jaw" ? 1 : jawType === "lower_jaw" ? 2 : 0;
+    const stlPayload = [
+      { machine_id, uuid, caseIntID },
+      {
+        case_id: caseIntID,
+        type: dbType,
+        data: base64,
+        filename,
+      },
+    ];
+    const stlRes = await fetch(`${API_BASE}/stl`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(stlPayload),
+    });
+    logApi(stlRes, 'POST /stl');
+    if (!stlRes.ok) {
+      let body = "";
+      try { body = await stlRes.text(); } catch {}
+      console.error(
+        `❌ Failed to upload ${jawType} (processed)`,
+        stlRes.status,
+        body.slice(0, 200)
+      );
+    } else {
+      console.log(`✅ Uploaded ${jawType} STL (processed)`);
+    }
+  } catch (err) {
+    console.error(`❌ Error uploading ${jawType}:`, err);
+  }
 }
 
 function renderSharedUserList() {

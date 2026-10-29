@@ -21,7 +21,12 @@ import {
 } from "../shared/api.js";
 import { updateCaseStatus, STATUS_3D_DESIGN_APPROVED } from "./caseNote.js";
 import { confirmPreview3DApproval, sendApprovalEmails } from "./preview3DApproval.js";
-import { isSupportedMeshFile, meshFileKind } from "../../viewer3d/meshFileSupport.js";
+import {
+  geometryToBinaryStl,
+  isSupportedMeshFile,
+  meshFileKind,
+  normalizeJawMeshFile,
+} from "../../viewer3d/meshFileSupport.js";
 import { prepareMeshUpload } from "../../viewer3d/plyTextureBake.js";
 
 // Re-exported: sibling 2D modules import it from here.
@@ -2171,41 +2176,6 @@ function snapVertexColorBands(geometry, iterations = 2) {
   colorAttr.needsUpdate = true;
 }
 
-// Serialize a THREE.BufferGeometry (indexed or not) to a binary STL ArrayBuffer.
-function geometryToBinaryStl(geometry) {
-  const pos = geometry.attributes.position;
-  const index = geometry.index;
-  const triCount = (index ? index.count : pos.count) / 3;
-  const buffer = new ArrayBuffer(84 + triCount * 50);
-  const view = new DataView(buffer);
-  view.setUint32(80, triCount, true); // 80-byte header left zeroed
-  const vert = (i) => {
-    const vi = index ? index.getX(i) : i;
-    return [pos.getX(vi), pos.getY(vi), pos.getZ(vi)];
-  };
-  let offset = 84;
-  for (let t = 0; t < triCount; t += 1) {
-    const a = vert(t * 3);
-    const b = vert(t * 3 + 1);
-    const c = vert(t * 3 + 2);
-    let nx = (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]);
-    let ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
-    let nz = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
-    const len = Math.hypot(nx, ny, nz) || 1;
-    nx /= len; ny /= len; nz /= len;
-    view.setFloat32(offset, nx, true); offset += 4;
-    view.setFloat32(offset, ny, true); offset += 4;
-    view.setFloat32(offset, nz, true); offset += 4;
-    for (const v of [a, b, c]) {
-      view.setFloat32(offset, v[0], true); offset += 4;
-      view.setFloat32(offset, v[1], true); offset += 4;
-      view.setFloat32(offset, v[2], true); offset += 4;
-    }
-    view.setUint16(offset, 0, true); offset += 2; // attribute byte count
-  }
-  return buffer;
-}
-
 // A /stl/get payload may be a real STL *or* OFF text (both render here). A .stl-named file
 // holding OFF opens blank in STL viewers, so convert OFF → binary STL; pass STL bytes through.
 function jawDataToStlBytes(data) {
@@ -3107,18 +3077,18 @@ function pickStlFile(onPick, accept = ".stl") {
 }
 
 function pickAndUploadJawStl(jaw) {
-  pickStlFile((file) => uploadJawStl(jaw, file));
+  pickStlFile((file) => uploadJawStl(jaw, file), ".stl,.ply");
 }
 
-// Upload a picked STL as the case's real jaw — mirrors case creation (POST /stl/raw + /stl) so it
-// round-trips, then renders into groups[jaw] so the icon/trash/survey controls operate on it.
+// Upload a picked jaw mesh as the case's real jaw. PLY is normalized to binary STL first,
+// preserving the existing API and DLL survey/occlusion contract.
 async function uploadJawStl(jaw, file) {
   if (!state.caseIntID) {
     setMessage?.("Open a case before uploading a 3D file.");
     return;
   }
-  if (!/\.stl$/i.test(file.name)) {
-    setMessage?.("Only .stl files are supported.");
+  if (!isSupportedMeshFile(file.name)) {
+    setMessage?.("Only .stl and .ply files are supported.");
     return;
   }
 
@@ -3171,13 +3141,14 @@ async function uploadJawStl(jaw, file) {
     });
 
   try {
-    const base64 = await fileToBase64(file);
+    const normalizedFile = await normalizeJawMeshFile(file, PLYLoader);
+    const base64 = await fileToBase64(normalizedFile);
 
     // Both buckets are attempted independently — a failure in one must not skip
     // the other (the desktop client and the web preview read different tables).
     const [rawOk, stlOk] = await Promise.all([
-      postStl("/stl/raw", { case_id: caseId, type: jawType, data: base64, filename: file.name }, "raw"),
-      postStl("/stl", { case_id: state.caseIntID, type: dbType, data: base64, filename: file.name }, "stl"),
+      postStl("/stl/raw", { case_id: caseId, type: jawType, data: base64, filename: normalizedFile.name }, "raw"),
+      postStl("/stl", { case_id: state.caseIntID, type: dbType, data: base64, filename: normalizedFile.name }, "stl"),
     ]);
 
     if (!rawOk && !stlOk) {
@@ -3185,7 +3156,7 @@ async function uploadJawStl(jaw, file) {
       return;
     }
 
-    await renderJawStl(jaw, { data: base64, type: jawType, filename: file.name });
+    await renderJawStl(jaw, { data: base64, type: jawType, filename: normalizedFile.name });
     // Auto-refresh this jaw's case thumbnail from the freshly rendered model so
     // the case tile updates without a manual capture. Best-effort.
     await uploadJawThumbnail(jaw);
