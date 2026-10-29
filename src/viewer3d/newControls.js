@@ -192,6 +192,7 @@ style.textContent = `
     border: 0;
     padding: 0;
     cursor: default;
+    pointer-events: none;
   }
 
   .component-panel-backdrop:not(.hidden) {
@@ -1310,16 +1311,12 @@ function createComponentPanel(groups) {
     }
   });
 
-  // Invisible click-catcher so tapping anywhere else on the canvas closes the
-  // panel, same as a dropdown — see the .component-panel-backdrop rule above.
+  // Visual state layer only; it must not intercept a right-drag intended for
+  // the canvas rotation controls.
   const backdrop = document.createElement("div");
   backdrop.id = "component-panel-backdrop";
   backdrop.className = "component-panel-backdrop hidden";
   backdrop.setAttribute("aria-hidden", "true");
-  backdrop.addEventListener("click", () => {
-    if (window.viewerPanelManager) window.viewerPanelManager.close("objects-panel");
-    else closePanel();
-  });
 
   // The panel takes the mini strip's own corner while open, so only one of
   // the two is ever on screen — the mini strip (toggle + per-component

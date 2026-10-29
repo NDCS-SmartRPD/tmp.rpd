@@ -786,6 +786,9 @@ function bindViewerRotationTargetAnchor(domElement) {
       return;
     }
 
+    // Dismiss the default-open objects panel without consuming this event;
+    // TrackballControls must receive the same right-button press to rotate.
+    window.viewerPanelManager?.close("objects-panel");
   }, true);
 
   const releasePointer = (event) => {
@@ -831,6 +834,9 @@ function bindViewerRotationTargetAnchor(domElement) {
   }, true);
   domElement.addEventListener("contextmenu", (event) => {
     event.preventDefault();
+  });
+  domElement.addEventListener("click", () => {
+    window.viewerPanelManager?.close("objects-panel");
   });
   window.addEventListener("blur", () => {
     activeTouchPointers.clear();
