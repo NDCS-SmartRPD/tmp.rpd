@@ -4,6 +4,15 @@
 # Node.js dependencies
 node_modules/
 
+# Local credentials, browser sessions, API environments, and scratch backups
+.env
+.env.*
+!.env.example
+cookies.json
+*.bak
+*.bak2
+postman/*environment*.json
+
 # Test output
 coverage/
 eslint-report.json

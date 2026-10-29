@@ -1,6 +1,6 @@
 import { lol } from "../shared/crypt.js";
 import { getAppBasePath } from "../shared/pageContext.js";
-import { buildThreeDViewerUrl } from "../shared/caseLinks.js";
+import { buildThreeDViewerUrl, createSharedThreeDViewerUrl } from "../shared/caseLinks.js";
 import { toast, confirmModal, openThemedCalendar, attachThemedCalendar } from "../shared/toast.js";
 import { openSelectMenu, closeSelectMenu, isSelectMenuOpenFor } from "../shared/selectMenu.js";
 import { logApi, statusLabel, STATUS_LABELS } from "../shared/apiLog.js";
@@ -2971,13 +2971,19 @@ if (filterSel) filterSel.addEventListener("change", () => applyClientFilters());
   // Generate a QR code of the selected case's 3D viewer link.
   const generateQrBtn = document.getElementById("generateQrBtn");
   if (generateQrBtn) {
-    generateQrBtn.addEventListener("click", () => {
-      const url3d = buildThreeDViewerUrl(window.selectedCaseId, { forShare: true });
-      if (!url3d) {
+    generateQrBtn.addEventListener("click", async () => {
+      const caseId = window.selectedCaseId;
+      if (!caseId) {
         toast.warning("Please select a case first.");
         return;
       }
-      showThreeDViewerQr(url3d);
+      try {
+        const url3d = await createSharedThreeDViewerUrl(caseId);
+        showThreeDViewerQr(url3d);
+      } catch (err) {
+        console.warn("Failed to create 3D viewer QR link", err);
+        toast.error("Couldn't create the viewer link.");
+      }
     });
   }
 
@@ -2985,12 +2991,13 @@ if (filterSel) filterSel.addEventListener("change", () => applyClientFilters());
   const copy3dLinkBtn = document.getElementById("copy3dLinkBtn");
   if (copy3dLinkBtn) {
     copy3dLinkBtn.addEventListener("click", async () => {
-      const url3d = buildThreeDViewerUrl(window.selectedCaseId, { forShare: true });
-      if (!url3d) {
+      const caseId = window.selectedCaseId;
+      if (!caseId) {
         toast.warning("Please select a case first.");
         return;
       }
       try {
+        const url3d = await createSharedThreeDViewerUrl(caseId);
         await navigator.clipboard.writeText(url3d);
         toast.success("3D viewer link copied.");
       } catch (err) {

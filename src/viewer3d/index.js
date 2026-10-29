@@ -28,7 +28,7 @@ import {
   removeVisibilityAndTransparencyControls,
 } from "./newControls.js";
 import { createArtificialTeethRenderer } from "./artificialTeeth.js";
-import { API_BASE, MACHINE_ID } from "../js/shared/api.js";
+import { API_BASE, MACHINE_ID, getLoggedInUser } from "../js/shared/api.js";
 import { decodeJawStructResponse, decodedJawMaterial } from "../js/2D/jawStructCodec.js";
 import { FULL_ACRYLIC_MATERIAL } from "../js/2D/JawDesignProposal.js";
 import { occlusionColorArray } from "./vertexColors.js";
@@ -61,6 +61,7 @@ if (LOG_VIEWER_REVISION_TO_CONSOLE) {
 let all_mesh_mat = {};
 window.finished = false;
 const viewerContainer = document.getElementById("container3D");
+const isReadOnlyViewer = !getLoggedInUser()?.uuid;
 
 // Get the current URL
 const url = new URL(window.location.href);
@@ -2898,7 +2899,7 @@ async function fetchAndRenderPolylines(caseIntID) {
       machine_id: MACHINE_ID,
       // Fallback UUID keeps direct/shared viewer URLs able to load case assets.
       // Prefer loggedInUser.uuid if this viewer is later wired to authenticated sessions.
-      uuid: "AC4gRQXZJoNz9EhhW36Q8jMJXBsf",
+      uuid: getLoggedInUser()?.uuid || "",
       caseIntID,
     },
     {
@@ -3332,7 +3333,7 @@ function removeViewerLoadingScreen() {
     machine_id: MACHINE_ID,
     // Fallback UUID keeps direct/shared viewer URLs able to load case assets.
     // Prefer loggedInUser.uuid if this viewer is later wired to authenticated sessions.
-    uuid: "AC4gRQXZJoNz9EhhW36Q8jMJXBsf",
+    uuid: getLoggedInUser()?.uuid || "",
     //uuid: 'eOqJe2FpjqdECy25l0KuJkH2cPQm', // dev server acc uuid
     case_int_id: paramValue,
     jaw_type: 2,
@@ -3759,7 +3760,7 @@ function removeViewerLoadingScreen() {
       [
         {
           machine_id: MACHINE_ID,
-          uuid: "AC4gRQXZJoNz9EhhW36Q8jMJXBsf",
+          uuid: getLoggedInUser()?.uuid || "",
           caseIntID: paramValue,
         },
         {
@@ -3794,7 +3795,7 @@ function removeViewerLoadingScreen() {
       [
         {
           machine_id: MACHINE_ID,
-          uuid: "AC4gRQXZJoNz9EhhW36Q8jMJXBsf",
+          uuid: getLoggedInUser()?.uuid || "",
           caseIntID: paramValue,
         },
         {
@@ -3952,7 +3953,7 @@ function removeViewerLoadingScreen() {
             }
             window.showDesignUploadPrompt?.();
           });
-          btnContainer3D.appendChild(uploadSlotsButton);
+          if (!isReadOnlyViewer) btnContainer3D.appendChild(uploadSlotsButton);
 
           // Append the container to the body
           if (btnContainer.children.length > 0) {
@@ -5500,7 +5501,7 @@ function removeViewerLoadingScreen() {
         [
           {
             machine_id: MACHINE_ID,
-            uuid: "AC4gRQXZJoNz9EhhW36Q8jMJXBsf",
+            uuid: getLoggedInUser()?.uuid || "",
             caseIntID: paramValue,
           },
           { case_id: paramValue },
@@ -5745,7 +5746,7 @@ function removeViewerLoadingScreen() {
 
     const authPayload = {
       machine_id: MACHINE_ID,
-      uuid: "AC4gRQXZJoNz9EhhW36Q8jMJXBsf",
+      uuid: getLoggedInUser()?.uuid || "",
       caseIntID: paramValue,
     };
 
@@ -6243,7 +6244,7 @@ function removeViewerLoadingScreen() {
         JSON.stringify([
           {
             machine_id: MACHINE_ID,
-            uuid: "AC4gRQXZJoNz9EhhW36Q8jMJXBsf",
+            uuid: getLoggedInUser()?.uuid || "",
             caseIntID: paramValue,
           },
           // case_id belongs in THIS object, not the auth one (same as POST /stl):
@@ -6491,7 +6492,7 @@ function removeViewerLoadingScreen() {
         body: JSON.stringify([
           {
             machine_id: MACHINE_ID,
-            uuid: "AC4gRQXZJoNz9EhhW36Q8jMJXBsf",
+            uuid: getLoggedInUser()?.uuid || "",
             caseIntID: paramValue,
           },
           { case_id: paramValue, slotNumber: slot },
@@ -6710,7 +6711,7 @@ function removeViewerLoadingScreen() {
 
     const authPayload = {
       machine_id: MACHINE_ID,
-      uuid: "AC4gRQXZJoNz9EhhW36Q8jMJXBsf",
+      uuid: getLoggedInUser()?.uuid || "",
       caseIntID: paramValue,
     };
 

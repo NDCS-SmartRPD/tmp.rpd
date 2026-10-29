@@ -77,7 +77,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "[\r\n  {\r\n    \"machine_id\": \"3a0df9c37b50873c63cebecd7bed73152a5ef616\"\r\n  },\r\n  {\r\n    \"username\": \"faid123\",\r\n    \"password\": \"faid30413041D**\"\r\n  }\r\n]\r\n",
+					"raw": "[\r\n  {\r\n    \"machine_id\": \"{{machine_id}}\"\r\n  },\r\n  {\r\n    \"username\": \"{{username}}\",\r\n    \"password\": \"{{password}}\"\r\n  }\r\n]\r\n",
 					"options": {
 						"raw": {
 							"language": "json"
