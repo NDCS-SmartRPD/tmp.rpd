@@ -258,11 +258,6 @@ export async function loadInteractiveJawPreview(area) {
       // their empty/upload state so the user can still add 3D files.
       showEmptyJawPanel();
       preview3DState.preview3DReadyForExtras = true;
-      // The one eager load: with no jaw mesh the extras are all there is, so deferring
-      // them would strand the user on an empty stage.
-      ensureExtraStlsLoaded().catch((err) =>
-        console.warn("[preview3D] extra STL background load failed", err)
-      );
     }
     return true;
   } finally {
@@ -3362,7 +3357,6 @@ async function loadExtraStlsIntoPreview() {
   preview3DState.extraFileNames = {};
   preview3DState.occupiedSlots = new Set();
   setExtrasLoadProgress(0.05, "Fetching extra files");
-  let loaded = 0;
   const total = EXTRA_STL_SLOTS.length;
   for (let i = 0; i < total; i += 1) {
     const slotNumber = EXTRA_STL_SLOTS[i];
@@ -3371,7 +3365,6 @@ async function loadExtraStlsIntoPreview() {
     // and it goes out of scope before the next slot is asked for.
     const extra = await fetchExtraStlSlot(slotNumber);
     if (!extra) continue;
-    loaded += 1;
     preview3DState.occupiedSlots.add(slotNumber);
     preview3DState.extraFileNames[slotNumber] = extra.filename;
     // Isolate per-slot failures: a single corrupt/undecodable extra STL must not
@@ -3388,13 +3381,6 @@ async function loadExtraStlsIntoPreview() {
     });
   }
   setExtrasLoadProgress(1, "Extra 3D files ready");
-  // Extras stay off stage until the Extra 3D tab is up — unless there are no jaw meshes
-  // at all, where hiding them too would leave an empty viewport.
-  if (loaded && !preview3DState.groups.upper && !preview3DState.groups.lower) {
-    setExtraStlsVisible(true);
-    centerRootOnCombinedBounds(preview3DState.modelRoot);
-    fitPreviewCamera();
-  }
   renderUpload3dList();
 }
 
@@ -4045,9 +4031,8 @@ function enterExtraStlStage() {
           ? { position: camera.position.clone(), up: camera.up.clone(), target: controls.target.clone() }
           : null,
     };
-    // Extras render plain: the tab opens with the undercut heatmap closed, and
-    // its own toggle is what turns it on.
-    setHeatmapEnabled(false);
+    // Extra jaw files open surveyed; leaving restores the 3D Preview tab's mode.
+    setHeatmapEnabled(true);
   }
   for (const jaw of ["upper", "lower"]) {
     if (!preview3DState.groups?.[jaw]) continue;
@@ -4063,11 +4048,8 @@ function enterExtraStlStage() {
 // longer hold it (the last one was deleted).
 function exitExtraStlStage() {
   const prev = preview3DState.extrasPrevStage;
-  // Extras go back off stage — unless there are no jaw meshes to hand it back to
-  // (same fallback loadExtraStlsIntoPreview uses), which would leave a blank viewport.
-  const hasJaws = !!(preview3DState.groups?.upper || preview3DState.groups?.lower);
   setJawMeshesOnStage(true);
-  setExtraStlsVisible(!hasJaws);
+  setExtraStlsVisible(false);
   preview3DState.stageHiddenJaws.clear();
   if (prev) {
     if (prev.upper !== undefined) setJawVisible("upper", !!prev.upper);
@@ -4284,15 +4266,13 @@ export function openUpload3dModal() {
     if (!isUpload3dModalOpen()) return;
     renderUpload3dList();
     enterExtraStlStage();
-    // The extras land plain. Forced here, not just on entry: the jaw load's own
-    // heatmap call (and the saved-survey auto-apply) can land mid-download.
-    setHeatmapEnabled(false);
+    // Re-assert after the async load in case jaw survey work changed the shared mode.
+    setHeatmapEnabled(true);
   });
   return true;
 }
 
-// Leaving the tab: put the jaw meshes back on the stage so the 3D Preview tab
-// shows what it always did, and free the slot meshes.
+// Leaving the tab: put the jaw meshes back on stage and keep slot meshes cached.
 export function closeUpload3dModal() {
   preview3DState.extrasTabOpen = false;
   const modal = preview3DState.upload3dModal;
@@ -4300,32 +4280,7 @@ export function closeUpload3dModal() {
     modal.overlay.classList.add("is-hidden");
     modal.overlay.setAttribute("aria-hidden", "true");
   }
-  // Freed BEFORE handing the stage back: exitExtraStlStage re-centres the root on what
-  // is on it, and disposed extras must not still be counted in those bounds.
-  disposeExtraStls();
   if (preview3DState.extrasPrevStage) exitExtraStlStage();
-}
-
-// Drops every slot mesh and resets the load latch so extras only hold memory while their
-// tab is up. They are the biggest thing in the scene and on screen the least.
-function disposeExtraStls() {
-  // With no jaw meshes the extras ARE the stage (same fallback the load uses);
-  // freeing them would leave an empty viewport for a case that has nothing else.
-  const hasJaws = !!(preview3DState.groups?.upper || preview3DState.groups?.lower);
-  if (!hasJaws) return;
-  // Never mid-upload: that slot's row and its rendered result belong to a live request.
-  if (preview3DState.uploadingSlots.size || preview3DState.extrasLoading) return;
-  for (const slot of Object.keys(preview3DState.extraGroups || {})) {
-    const entry = preview3DState.extraGroups[slot];
-    if (!entry?.group) continue;
-    preview3DState.modelRoot?.remove(entry.group);
-    disposeObject3D(entry.group);
-  }
-  preview3DState.extraGroups = {};
-  preview3DState.extrasVisible = false;
-  // Drop the latch so the next open re-fetches; occupancy is re-read with it.
-  preview3DState.extrasLoadPromise = null;
-  preview3DState.extrasLoadProgress = null;
 }
 
 // Drives one slot's inline progress bar; `frac` is 0..1, and 1 means the bytes are in but
