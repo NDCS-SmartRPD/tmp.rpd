@@ -4530,8 +4530,8 @@ function enableSlotDropZone(el, slot) {
 
 // ---- Download jaw profile ------------------------------------------------
 
-// `request-download-jaw-profile` (footer + noticeboard) opens this menu: Download STL file
-// (upper + lower zipped) or Download as JPEG (reuses the "Save as JPEG" arch export).
+// `request-download-jaw-profile` (footer + noticeboard) opens this menu: jaw STLs,
+// original Extra 3D slot files, or JPEG (reuses the "Save as JPEG" arch export).
 function ensureDownloadJawProfileModal() {
   if (preview3DState.downloadJawModal) return preview3DState.downloadJawModal;
 
@@ -4578,6 +4578,18 @@ function ensureDownloadJawProfileModal() {
     downloadJawStlsAsZip();
   });
 
+  const extraBtn = document.createElement("button");
+  extraBtn.type = "button";
+  extraBtn.className = "jaw-dl-option";
+  extraBtn.innerHTML =
+    '<i class="fa fa-box-archive" aria-hidden="true"></i>' +
+    '<span class="jaw-dl-option-title">Download Extra 3D files</span>' +
+    '<span class="jaw-dl-option-sub">All occupied slots as a .zip</span>';
+  extraBtn.addEventListener("click", () => {
+    closeDownloadJawProfileModal();
+    downloadExtraStlsAsZip();
+  });
+
   const jpegBtn = document.createElement("button");
   jpegBtn.type = "button";
   jpegBtn.className = "jaw-dl-option";
@@ -4592,6 +4604,7 @@ function ensureDownloadJawProfileModal() {
   });
 
   options.appendChild(stlBtn);
+  options.appendChild(extraBtn);
   options.appendChild(jpegBtn);
   panel.appendChild(header);
   panel.appendChild(options);
@@ -4678,6 +4691,69 @@ async function downloadJawStlsAsZip() {
   } catch (err) {
     console.error("[preview3D] STL zip download failed", err);
     setMessage("Failed to download STL files.", true);
+  }
+}
+
+function cachedExtraStlFiles() {
+  return EXTRA_STL_SLOTS.map((slotNumber) => {
+    const entry = preview3DState.extraGroups?.[slotNumber];
+    if (!entry?.data) return null;
+    return {
+      slotNumber,
+      filename: entry.filename || preview3DState.extraFileNames?.[slotNumber],
+      data: entry.data,
+    };
+  }).filter(Boolean);
+}
+
+// Downloading does not enter the Extra 3D tab or parse/render a mesh. If that tab has
+// already loaded, use its cached payloads; otherwise fetch the four fixed slots directly.
+async function collectExtraStlFiles() {
+  if (preview3DState.extrasLoadPromise) {
+    await preview3DState.extrasLoadPromise;
+  }
+
+  const files = cachedExtraStlFiles();
+  const cachedSlots = new Set(files.map(({ slotNumber }) => slotNumber));
+  for (const slotNumber of EXTRA_STL_SLOTS) {
+    if (cachedSlots.has(slotNumber)) continue;
+    const file = await fetchExtraStlSlot(slotNumber);
+    if (file) files.push(file);
+  }
+  return files;
+}
+
+async function downloadExtraStlsAsZip() {
+  if (typeof window.JSZip === "undefined") {
+    setMessage("ZIP library failed to load — cannot download Extra 3D files.", true);
+    return;
+  }
+  try {
+    setMessage("Preparing Extra 3D download…", false);
+    const files = await collectExtraStlFiles();
+    if (!files.length) {
+      setMessage("No Extra 3D files found for this case.", true);
+      return;
+    }
+
+    const zip = new window.JSZip();
+    files.forEach(({ slotNumber, filename, data }) => {
+      const safeName = String(filename || `slot${slotNumber}.stl`).replace(/[\\/]/g, "_");
+      zip.file(`slot_${slotNumber}_${safeName}`, data, { base64: true });
+    });
+    const blob = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `case_${state.caseIntID ?? "unknown"}_extra_3d.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setMessage(`Downloaded ${files.length} Extra 3D file(s) as ZIP.`, false);
+  } catch (err) {
+    console.error("[preview3D] Extra 3D zip download failed", err);
+    setMessage("Failed to download Extra 3D files.", true);
   }
 }
 

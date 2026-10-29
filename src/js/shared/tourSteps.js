@@ -320,7 +320,7 @@ export const PAGE_TOURS = {
     },
     {
       title: "Download the jaw profile",
-      text: "Download Jaw Profile offers two things: Download STL file gives you the upper and lower jaws together as a .zip, and Download as JPEG saves the arch annotation as an image.",
+      text: "Download Jaw Profile offers three things: Download STL file gives you the upper and lower jaws together as a .zip, Download Extra 3D files collects every occupied Extra 3D slot into a .zip, and Download as JPEG saves the arch annotation as an image.",
       selector: "#footerDownloadJawProfileBtn",
       optional: true,
     },

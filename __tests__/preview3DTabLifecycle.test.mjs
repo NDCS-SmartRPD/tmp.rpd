@@ -31,4 +31,17 @@ describe("2D preview tab lifecycle", () => {
     expect(enterTab).toContain("setHeatmapEnabled(true)");
     expect(exitTab).toContain("setExtraStlsVisible(false)");
   });
+
+  test("downloads extra slots without navigating to or rendering the Extra 3D tab", () => {
+    const downloadMenu = source.slice(
+      source.indexOf("function ensureDownloadJawProfileModal"),
+      source.indexOf("// ---- Jaw panel rows")
+    );
+
+    expect(downloadMenu).toContain("Download Extra 3D files");
+    expect(downloadMenu).toContain("downloadExtraStlsAsZip()");
+    expect(downloadMenu).toContain("fetchExtraStlSlot(slotNumber)");
+    expect(downloadMenu).not.toContain("openUpload3dModal()");
+    expect(downloadMenu).not.toContain("renderExtraStl(");
+  });
 });
