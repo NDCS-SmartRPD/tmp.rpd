@@ -7,7 +7,6 @@ import {
   exitSurveyAiming,
   updateSurveyPlacementArrow,
   autoApplySavedSurveyAngles,
-  savedSurveyDirectionForJaw,
   refreshSurveyAngleLock,
   syncSurveyAngleLockUi,
   toggleSurveyAngleLock,
@@ -22,6 +21,7 @@ import {
 import { updateCaseStatus, STATUS_3D_DESIGN_APPROVED } from "./caseNote.js";
 import { confirmPreview3DApproval, sendApprovalEmails } from "./preview3DApproval.js";
 import { isSupportedMeshFile, meshFileKind } from "../../viewer3d/meshFileSupport.js";
+import { estimatedSurveyDirection, storedSurveyDirection } from "./extraStlSurvey.js";
 
 // Re-exported: sibling 2D modules import it from here.
 export { getLoggedInUser };
@@ -257,11 +257,6 @@ export async function loadInteractiveJawPreview(area) {
       // their empty/upload state so the user can still add 3D files.
       showEmptyJawPanel();
       preview3DState.preview3DReadyForExtras = true;
-      // The one eager load: with no jaw mesh the extras are all there is, so deferring
-      // them would strand the user on an empty stage.
-      ensureExtraStlsLoaded().catch((err) =>
-        console.warn("[preview3D] extra STL background load failed", err)
-      );
     }
     return true;
   } finally {
@@ -3282,9 +3277,10 @@ const extraJawColor = () => new THREE.Color(...DEFAULT_TOOTH_COLOR);
 // in name and finish: cast metal, or acrylic gum on a full-acrylic case.
 const FRAMEWORK_SLOTS = new Set([2, 4]);
 
-// Jaw-scan slots borrow the matching jaw's heatmap rather than being surveyed — the file is
-// a copy, so the DLL values already describe it. Framework slots never borrow one.
+// Jaw-scan slots are repaired and surveyed independently. Framework slots have no survey.
 const EXTRA_SLOT_JAW = { 1: "upper", 3: "lower" };
+
+let extraSurveySavePromise = Promise.resolve();
 
 const METAL_RPD_COLOR = 0xd6dadf; // brushed cobalt-chrome / stainless
 const ACRYLIC_RPD_COLOR = 0xd9928a; // acrylic denture base: warm salmon-rose, not pastel pink
@@ -3615,24 +3611,9 @@ async function ensureExtraOcclusionHeatmaps() {
   }
 }
 
-async function computeExtraJawUndercutSurface(jaw, stlDataBase64, label) {
-  if (!jaw || !stlDataBase64 || !state.caseIntID) return null;
-  if (!preview3DState.caseData) {
-    preview3DState.caseData = await fetchCaseData();
-  }
-  const direction = savedSurveyDirectionForJaw(preview3DState.caseData, jaw);
-  if (!direction) {
-    console.warn("[preview3D] extra jaw undercut skipped: saved survey direction missing", {
-      jaw,
-      case_id: state.caseIntID,
-      label,
-    });
-    return null;
-  }
-
+async function postExtraJawDll(path, jaw, stlDataBase64, filename, extra = {}) {
   const user = getLoggedInUser();
   const uuid = user?.uuid || PREVIEW_FALLBACK_UUID;
-  const path = "/dll/compute-surveying-no-pd";
   const body = [
     {
       machine_id: PREVIEW_MACHINE_ID,
@@ -3643,9 +3624,8 @@ async function computeExtraJawUndercutSurface(jaw, stlDataBase64, label) {
       case_id: state.caseIntID,
       type: jaw === "upper" ? 1 : 2,
       stl_data: stlDataBase64,
-      dir: direction,
-      printFullSurveying: true,
-      returnSurveyingBase64: true,
+      filename,
+      ...extra,
     },
   ];
 
@@ -3657,25 +3637,91 @@ async function computeExtraJawUndercutSurface(jaw, stlDataBase64, label) {
   });
   const dt = Math.round(performance.now() - t0);
   const tag = res.ok ? "✓" : "✕";
-  console.log(`[preview3D] ${tag} POST ${path} extra ${label} (${jaw}) status=${res.status} ${dt}ms`);
+  console.log(`[preview3D] ${tag} POST ${path} extra ${filename} (${jaw}) status=${res.status} ${dt}ms`);
 
-  let json = null;
-  try {
-    json = await res.json();
-  } catch {
-    json = null;
-  }
+  const json = await res.json().catch(() => null);
 
   if (!res.ok) {
-    console.warn("[preview3D] extra jaw undercut DLL request failed", {
-      jaw,
-      label,
-      status: res.status,
-      error: json?.details || json?.error,
-    });
-    return null;
+    throw new Error(json?.details || json?.error || `${path} failed with status ${res.status}`);
   }
-  return buildDllUndercutSurface(jaw, json);
+  return json;
+}
+
+async function writeEstimatedExtraSurveyDirection(jaw, direction) {
+  const current = await fetchCaseData({ force: true });
+  if (!current?.case_id) throw new Error("Unable to load the case before saving its survey direction");
+  const [x, y, z] = storedSurveyDirection(jaw, direction);
+  const updated = { ...current };
+  updated[`${jaw}_insertion_angle_x`] = x;
+  updated[`${jaw}_insertion_angle_y`] = y;
+  updated[`${jaw}_insertion_angle_z`] = z;
+  const res = await fetch(`${SMARTRPD_API_BASE}/case/${state.caseIntID}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify([
+      extraSlotAuth(),
+      {
+        case_id: updated.case_id,
+        upper_insertion_angle_x: Number(updated.upper_insertion_angle_x) || 0,
+        upper_insertion_angle_y: Number(updated.upper_insertion_angle_y) || 0,
+        upper_insertion_angle_z: Number(updated.upper_insertion_angle_z) || 0,
+        lower_insertion_angle_x: Number(updated.lower_insertion_angle_x) || 0,
+        lower_insertion_angle_y: Number(updated.lower_insertion_angle_y) || 0,
+        lower_insertion_angle_z: Number(updated.lower_insertion_angle_z) || 0,
+        process_upper: Number(updated.process_upper) || 0,
+        process_lower: Number(updated.process_lower) || 0,
+      },
+    ]),
+  });
+  if (!res.ok) throw new Error(`Survey direction save failed with status ${res.status}`);
+  preview3DState.caseData = updated;
+}
+
+function saveEstimatedExtraSurveyDirection(jaw, direction) {
+  extraSurveySavePromise = extraSurveySavePromise
+    .catch(() => {})
+    .then(() => writeEstimatedExtraSurveyDirection(jaw, direction));
+  return extraSurveySavePromise;
+}
+
+async function prepareExtraJawStl(jaw, stlDataBase64, filename) {
+  let repairedData = stlDataBase64;
+  try {
+    const repaired = await postExtraJawDll("/dll/repair-stl", jaw, stlDataBase64, filename);
+    if (!repaired?.repaired_stl_data) throw new Error("The mesh repair did not return an STL");
+    repairedData = repaired.repaired_stl_data;
+  } catch (error) {
+    console.warn(`[preview3D] ${filename}: mesh repair failed; rendering the uploaded STL`, error);
+    return { data: repairedData, undercutSurface: null };
+  }
+
+  try {
+    const estimated = await postExtraJawDll("/dll/estimate-surveying", jaw, repairedData, filename);
+    const direction = estimatedSurveyDirection(estimated?.surveying_direction);
+    if (!direction) throw new Error("The survey estimator did not return a valid direction");
+    await saveEstimatedExtraSurveyDirection(jaw, direction);
+
+    const surveyed = await postExtraJawDll("/dll/compute-surveying-no-pd", jaw, repairedData, filename, {
+      dir: direction,
+      printFullSurveying: true,
+      returnSurveyingBase64: true,
+    });
+    const undercutSurface = buildDllUndercutSurface(jaw, surveyed);
+    if (!undercutSurface) throw new Error("The undercut survey did not return heatmap values");
+    return { data: repairedData, undercutSurface };
+  } catch (error) {
+    console.warn(`[preview3D] ${filename}: automatic survey failed; rendering the repaired STL`, error);
+    return { data: repairedData, undercutSurface: null };
+  }
+}
+
+async function replaceExtraStlSlot(slotNumber, filename, data) {
+  const res = await fetch(`${SMARTRPD_API_BASE}/stl/slot/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify([extraSlotAuth(), { case_id: state.caseIntID, slotNumber, filename, data }]),
+  });
+  if (!res.ok) throw new Error(`Repaired STL save failed with status ${res.status}`);
 }
 
 function buildExtraJawGeometry(rawGeometry, jaw, mode, label, surfaceOverride = null) {
@@ -3691,7 +3737,7 @@ function buildExtraJawGeometry(rawGeometry, jaw, mode, label, surfaceOverride = 
 // Parse a base64 STL into the model root: jaw slots in jaw tan, framework slots (2 & 4) in
 // the material's finish. Jaw slots apply the same runtime DLL heatmap surfaces as the main
 // preview.
-async function renderExtraStl({ slotNumber, filename, data }) {
+async function renderExtraStl({ slotNumber, filename, data, undercutSurface = null }) {
   if (!(await ensureThreeDeps())) return;
   const root = preview3DState.modelRoot;
   if (!root) return;
@@ -3701,11 +3747,16 @@ async function renderExtraStl({ slotNumber, filename, data }) {
   const loader = kind === "ply" ? new PLYLoader() : new STLLoader();
   const jaw = EXTRA_SLOT_JAW[slotNumber] || null;
   const mode = getExtraJawHeatmapMode(jaw) || "undercut";
-  let geometry = loader.parse(base64ToArrayBuffer(data));
+  let repairedData = data;
+  let extraUndercutSurface = undercutSurface;
+  if (jaw && kind === "stl" && !extraUndercutSurface) {
+    const prepared = await prepareExtraJawStl(jaw, data, filename);
+    repairedData = prepared.data;
+    extraUndercutSurface = prepared.undercutSurface;
+    await replaceExtraStlSlot(slotNumber, filename, repairedData);
+  }
+  let geometry = loader.parse(base64ToArrayBuffer(repairedData));
   const embeddedColors = kind === "ply" && Boolean(geometry.getAttribute("color"));
-  const extraUndercutSurface = jaw && kind === "stl"
-    ? await computeExtraJawUndercutSurface(jaw, data, label)
-    : null;
   const initialSurface = mode === "undercut" ? extraUndercutSurface : null;
   geometry = embeddedColors
     ? getDisplayGeometryForQuality(geometry, label)
@@ -3756,7 +3807,7 @@ async function renderExtraStl({ slotNumber, filename, data }) {
   preview3DState.extraGroups[slotNumber] = {
     group,
     jaw,
-    data,
+    data: repairedData,
     filename,
     slotNumber,
     undercutSurface: extraUndercutSurface,
@@ -3779,11 +3830,10 @@ async function repaintExtraJawHeatmaps() {
   for (const entry of Object.values(preview3DState.extraGroups || {})) {
     const jaw = entry?.jaw;
     if (jaw && mode === "undercut" && !entry.embeddedColors && !entry.undercutSurface && entry.data) {
-      entry.undercutSurface = await computeExtraJawUndercutSurface(
-        jaw,
-        entry.data,
-        entry.filename || `slot ${entry.slotNumber || ""}`.trim()
-      );
+      const prepared = await prepareExtraJawStl(jaw, entry.data, entry.filename);
+      entry.data = prepared.data;
+      entry.undercutSurface = prepared.undercutSurface;
+      await replaceExtraStlSlot(entry.slotNumber, entry.filename, entry.data);
       invalidateExtraHeatmapCache(entry, "undercut");
     }
     const surface = jaw
@@ -3903,13 +3953,17 @@ async function uploadExtraStl(file, targetSlot = null) {
     }
     // case_id belongs in the DATA object, not the auth one (same as POST /stl). Without it
     // the insert 500s with no CORS header, surfacing as a bare "Failed to fetch".
+    const jaw = EXTRA_SLOT_JAW[freeSlot] || null;
+    const prepared = jaw && meshFileKind(file.name) === "stl"
+      ? await prepareExtraJawStl(jaw, base64, file.name)
+      : { data: base64, undercutSurface: null };
     const payload = JSON.stringify([
       extraSlotAuth(),
       {
         case_id: state.caseIntID,
         slotNumber: freeSlot,
         filename: file.name,
-        data: base64,
+        data: prepared.data,
       },
     ]);
     await uploadWithProgress(
@@ -3931,7 +3985,12 @@ async function uploadExtraStl(file, targetSlot = null) {
       }
     }
     preview3DState.occupiedSlots.add(freeSlot);
-    await renderExtraStl({ slotNumber: freeSlot, filename: file.name, data: base64 });
+    await renderExtraStl({
+      slotNumber: freeSlot,
+      filename: file.name,
+      data: prepared.data,
+      undercutSurface: prepared.undercutSurface,
+    });
     // Uploads always come from the open panel, so stage the new file (this is what puts
     // the FIRST extra on screen — opening an all-empty panel doesn't stage anything).
     if (isUpload3dModalOpen()) {
