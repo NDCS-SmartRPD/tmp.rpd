@@ -61,6 +61,23 @@ describe("applyTextureToGeometry", () => {
       .toThrow("texture coordinates");
   });
 
+  test("rejects missing geometry and colour attributes without null dereferences", () => {
+    expect(() => geometryToBinaryPly(null)).toThrow("position and colour");
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0], 3));
+    expect(() => geometryToBinaryPly(geometry)).toThrow("position and colour");
+    geometry.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0], 2));
+    expect(() => applyTextureToGeometry(geometry, null, 0, 0)).toThrow("could not be decoded");
+  });
+
+  test("ignores null file selections safely", async () => {
+    await expect(prepareMeshUpload([null], null)).resolves.toEqual({
+      file: null,
+      baked: false,
+      textureMissing: false,
+    });
+  });
+
   test("bakes the built-in 3Shape palette without a companion JPG", async () => {
     const ply = [
       "ply", "format ascii 1.0", "comment TextureFile scan.jpg", "comment provider 3Shape",

@@ -6222,7 +6222,7 @@ function removeViewerLoadingScreen() {
   // Validates, uploads and renders one File into one slot. Shared by the file
   // picker and drag-and-drop, which each just hand it a File.
   async function uploadFileToSlot(files, slot, statusEl) {
-    const selection = Array.isArray(files) ? files : [files];
+    const selection = (Array.isArray(files) ? files : [files]).filter(Boolean);
     const selectedMesh = selection.find((entry) => isSupportedMeshFile(entry?.name));
     if (!selectedMesh) {
       statusEl.textContent = "Only .stl and .ply files are supported.";
@@ -6234,8 +6234,12 @@ function removeViewerLoadingScreen() {
     setSlotTileBusy(slot, "Reading file");
     try {
       const prepared = await prepareMeshUpload(selection, PLYLoader);
-      const file = prepared.file;
-      if (prepared.textureMissing) {
+      const file = prepared?.file;
+      if (!file) {
+        statusEl.textContent = "No supported 3D file was selected.";
+        return;
+      }
+      if (prepared?.textureMissing) {
         statusEl.textContent = "Select the PLY and its referenced JPG together.";
         return;
       }

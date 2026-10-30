@@ -13,9 +13,12 @@ const linearToSrgbByte = (value) => Math.round(255 * Math.max(0, Math.min(1,
 )));
 
 export function geometryToBinaryPly(geometry) {
-  const position = geometry.getAttribute("position");
-  const color = geometry.getAttribute("color");
-  const index = geometry.getIndex();
+  const position = geometry?.getAttribute?.("position");
+  const color = geometry?.getAttribute?.("color");
+  if (!position?.count || color?.count !== position.count) {
+    throw new Error("PLY geometry does not contain matching position and colour data.");
+  }
+  const index = geometry.getIndex?.();
   const faceCount = Math.floor((index?.count ?? position.count) / 3);
   const header = new TextEncoder().encode([
     "ply",
@@ -58,9 +61,13 @@ export function geometryToBinaryPly(geometry) {
 }
 
 export function applyTextureToGeometry(geometry, pixels, width, height) {
-  const uv = geometry.getAttribute("uv");
-  if (!uv || uv.count !== geometry.getAttribute("position")?.count) {
-    throw new Error("PLY does not contain per-face texture coordinates.");
+  const position = geometry?.getAttribute?.("position");
+  const uv = geometry?.getAttribute?.("uv");
+  if (!position?.count || !uv || uv.count !== position.count) {
+    throw new Error("PLY does not contain matching per-face texture coordinates.");
+  }
+  if (!pixels?.length || width < 1 || height < 1) {
+    throw new Error("PLY texture image could not be decoded.");
   }
 
   const colors = new Float32Array(uv.count * 3);
@@ -109,50 +116,67 @@ const builtIn3ShapeTexture = () => {
 
 const imagePixels = async (file) => {
   const bitmap = await createImageBitmap(file);
-  const canvas = document.createElement("canvas");
-  canvas.width = bitmap.width;
-  canvas.height = bitmap.height;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  context.drawImage(bitmap, 0, 0);
-  bitmap.close?.();
-  return {
-    width: canvas.width,
-    height: canvas.height,
-    pixels: context.getImageData(0, 0, canvas.width, canvas.height).data,
-  };
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext?.("2d", { willReadFrequently: true });
+    if (!context) throw new Error("Canvas image decoding is unavailable.");
+    context.drawImage(bitmap, 0, 0);
+    return {
+      width: canvas.width,
+      height: canvas.height,
+      pixels: context.getImageData(0, 0, canvas.width, canvas.height)?.data,
+    };
+  } finally {
+    bitmap?.close?.();
+  }
 };
 
+const isJpeg = (file) => /\.jpe?g$/i.test(file?.name || "");
+const leafName = (value) => String(value || "").split(/[\\/]/).pop().toLowerCase();
+
+function selectedTexture(selected, referencedName) {
+  const jpgs = selected.filter(isJpeg);
+  const referenced = leafName(referencedName);
+  return jpgs.find((file) => leafName(file.name) === referenced)
+    || (jpgs.length === 1 ? jpgs[0] : null);
+}
+
 export async function prepareMeshUpload(files, PLYLoader) {
-  const selected = Array.from(files || []);
-  const meshFile = selected.find((file) => isSupportedMeshFile(file.name));
+  const selected = Array.from(files || []).filter(Boolean);
+  const meshFile = selected.find((file) => isSupportedMeshFile(file?.name));
   if (!meshFile) return { file: null, baked: false, textureMissing: false };
   if (meshFileKind(meshFile.name) !== "ply") {
     return { file: meshFile, baked: false, textureMissing: false };
   }
+  if (!PLYLoader) throw new Error("PLY loader is unavailable.");
 
   const bytes = new Uint8Array(await meshFile.arrayBuffer());
   const geometry = new PLYLoader().parse(bytes.buffer);
-  if (geometry.getAttribute("color")) {
-    geometry.dispose();
-    return { file: meshFile, baked: false, textureMissing: false };
-  }
+  if (!geometry?.getAttribute) throw new Error("PLY geometry could not be parsed.");
+  try {
+    if (geometry.getAttribute("color")) {
+      return { file: meshFile, baked: false, textureMissing: false };
+    }
 
-  const textureInfo = textureInfoFromPly(bytes);
-  const texture = textureInfo.is3Shape
-    ? builtIn3ShapeTexture()
-    : selected.find((file) => file.name.toLowerCase() === textureInfo.name.toLowerCase());
-  if (!texture) {
-    geometry.dispose();
-    return { file: meshFile, baked: false, textureMissing: Boolean(textureInfo.name) };
-  }
+    const textureInfo = textureInfoFromPly(bytes);
+    const texture = textureInfo.is3Shape
+      ? builtIn3ShapeTexture()
+      : selectedTexture(selected, textureInfo.name);
+    if (!texture) {
+      return { file: meshFile, baked: false, textureMissing: Boolean(textureInfo.name) };
+    }
 
-  const image = await imagePixels(texture);
-  applyTextureToGeometry(geometry, image.pixels, image.width, image.height);
-  const bakedBytes = geometryToBinaryPly(geometry);
-  geometry.dispose();
-  return {
-    file: new File([bakedBytes], meshFile.name, { type: "application/octet-stream" }),
-    baked: true,
-    textureMissing: false,
-  };
+    const image = await imagePixels(texture);
+    applyTextureToGeometry(geometry, image.pixels, image.width, image.height);
+    const bakedBytes = geometryToBinaryPly(geometry);
+    return {
+      file: new File([bakedBytes], meshFile.name, { type: "application/octet-stream" }),
+      baked: true,
+      textureMissing: false,
+    };
+  } finally {
+    geometry.dispose?.();
+  }
 }

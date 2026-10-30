@@ -3843,13 +3843,16 @@ async function uploadExtraStl(files, targetSlot = null) {
     setMessage?.("All 4 extra 3D file slots are in use. Delete one first.");
     return;
   }
-  const selection = Array.isArray(files) ? files : [files];
+  const selection = (Array.isArray(files) ? files : [files]).filter(Boolean);
   if (!selection.some((entry) => isSupportedMeshFile(entry?.name))) {
     setMessage?.("Only .stl and .ply files are supported.");
     return;
   }
 
-  await ensureThreeDeps();
+  if (!(await ensureThreeDeps())) {
+    setMessage?.("3D file support could not be loaded. Please try again.");
+    return;
+  }
   let prepared;
   try {
     prepared = await prepareMeshUpload(selection, PLYLoader);
@@ -3858,8 +3861,12 @@ async function uploadExtraStl(files, targetSlot = null) {
     setMessage?.("The PLY texture could not be read. Please select the original PLY and JPG again.");
     return;
   }
-  const file = prepared.file;
-  if (prepared.textureMissing) {
+  const file = prepared?.file;
+  if (!file) {
+    setMessage?.("No supported 3D file was selected.");
+    return;
+  }
+  if (prepared?.textureMissing) {
     setMessage?.("Select the PLY and its referenced JPG together to include the 3Shape heatmap.");
     return;
   }
