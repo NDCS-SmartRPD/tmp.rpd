@@ -36,13 +36,15 @@ export function savedSurveyDirection(caseData, jaw) {
 }
 
 function surveyingValues(response) {
+  if (response?.surveying_values_base64) {
+    const binary = atob(response.surveying_values_base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return new Float32Array(bytes.buffer);
+  }
   if (Array.isArray(response?.surveying_values)) return response.surveying_values;
   if (Array.isArray(response?.surveying_values_preview)) return response.surveying_values_preview;
-  if (!response?.surveying_values_base64) return [];
-  const binary = atob(response.surveying_values_base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return new Float32Array(bytes.buffer);
+  return [];
 }
 
 function parseOff(bytes) {

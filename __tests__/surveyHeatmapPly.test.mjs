@@ -53,6 +53,30 @@ describe("survey heatmap PLY export", () => {
       .toEqual([170, 0, 3]);
   });
 
+  test("prefers the full base64 survey values over the fallback array", () => {
+    const mesh = new TextEncoder().encode([
+      "OFF",
+      "3 1 0",
+      "0 0 0",
+      "1 0 0",
+      "0 1 0",
+      "3 0 1 2",
+    ].join("\n"));
+    const values = new Float32Array([0.8, 0.8, 0.8]);
+    const binary = Array.from(new Uint8Array(values.buffer), (byte) =>
+      String.fromCharCode(byte)
+    ).join("");
+
+    const ply = buildSurveyHeatmapPly(mesh, {
+      surveying_values: [0, 0, 0],
+      surveying_values_base64: btoa(binary),
+    });
+    const headerEnd = new TextDecoder().decode(ply).indexOf("end_header\n") + 11;
+
+    expect(Array.from(ply.subarray(headerEnd + 12, headerEnd + 15)))
+      .toEqual([170, 0, 3]);
+  });
+
   test("adds recomputed surveyed jaws to the case-list download bundle", () => {
     expect(caseManagementSource).toContain("/dll/compute-surveying-no-pd");
     expect(caseManagementSource).toContain("buildSurveyHeatmapPly");
