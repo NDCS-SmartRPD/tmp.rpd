@@ -4681,6 +4681,10 @@ function finishDownloadProgress(token, label, isError = false) {
   }, isError ? 3500 : 1800);
 }
 
+function waitForDownloadPaint() {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+}
+
 async function downloadJawProfileJpeg() {
   const token = beginDownloadProgress("Preparing JPEG…");
   const saved = await saveAsJpeg();
@@ -4791,6 +4795,8 @@ async function downloadJawPlysAsZip() {
   const progressToken = beginDownloadProgress("Preparing undercut PLY files…");
   try {
     setMessage("Preparing PLY heatmap download…", false);
+    // Let the closed menu and progress bar paint before CPU-heavy mesh baking.
+    await waitForDownloadPaint();
     await ensureThreeDeps();
     const jaws = await collectJawStlFiles();
     if (!jaws.length) {

@@ -9,6 +9,7 @@ const caseManagementSource = fs.readFileSync(
   path.resolve("src/js/pages/caseManagement.js"),
   "utf8"
 );
+const caseListStyles = fs.readFileSync(path.resolve("css/case_list.css"), "utf8");
 
 describe("survey heatmap PLY export", () => {
   test("restores the DLL direction from a saved upper survey angle", () => {
@@ -43,5 +44,16 @@ describe("survey heatmap PLY export", () => {
     expect(caseManagementSource).toContain("/dll/compute-surveying-no-pd");
     expect(caseManagementSource).toContain("buildSurveyHeatmapPly");
     expect(caseManagementSource).toContain('zip.file(`survey_heatmap/${jaw}.ply`');
+  });
+
+  test("shows responsive non-blocking packaging progress for the case ZIP", () => {
+    expect(caseManagementSource).toContain("beginCaseDownloadProgress");
+    expect(caseManagementSource).toContain("updateCaseDownloadProgress");
+    expect(caseManagementSource).toContain("finishCaseDownloadProgress");
+    expect(caseManagementSource).toContain("percent * 0.15");
+    expect(caseListStyles).toContain(".cm-download-progress");
+    expect(caseListStyles).toContain("pointer-events: none");
+    expect(caseListStyles).toContain("env(safe-area-inset-bottom");
+    expect(caseListStyles).toContain("calc(100vw - 24px)");
   });
 });

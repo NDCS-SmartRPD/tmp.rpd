@@ -828,6 +828,60 @@ async function fetchCase2dJpegBytes(caseIntId, uuid) {
   }
 }
 
+let activeCaseDownloadProgress = null;
+let caseDownloadProgressTimer = null;
+
+function ensureCaseDownloadProgress() {
+  let progress = document.getElementById("caseDownloadProgress");
+  if (progress) return progress;
+  progress = document.createElement("div");
+  progress.id = "caseDownloadProgress";
+  progress.className = "cm-download-progress is-hidden is-indeterminate";
+  progress.setAttribute("role", "status");
+  progress.setAttribute("aria-live", "polite");
+  progress.innerHTML =
+    '<div class="cm-download-progress-copy">Preparing case ZIP…</div>' +
+    '<div class="cm-download-progress-track" role="progressbar" aria-label="Case download packaging progress">' +
+      '<div class="cm-download-progress-fill"></div>' +
+    '</div>';
+  document.body.appendChild(progress);
+  return progress;
+}
+
+function beginCaseDownloadProgress(label) {
+  const token = Symbol("case-download-progress");
+  activeCaseDownloadProgress = token;
+  clearTimeout(caseDownloadProgressTimer);
+  const progress = ensureCaseDownloadProgress();
+  progress.querySelector(".cm-download-progress-copy").textContent = label;
+  progress.querySelector(".cm-download-progress-track").removeAttribute("aria-valuenow");
+  progress.classList.remove("is-hidden", "is-error");
+  progress.classList.add("is-indeterminate");
+  return token;
+}
+
+function updateCaseDownloadProgress(token, label, percent) {
+  if (token !== activeCaseDownloadProgress) return;
+  const progress = ensureCaseDownloadProgress();
+  const value = Math.max(0, Math.min(100, Math.round(percent)));
+  progress.querySelector(".cm-download-progress-copy").textContent = label;
+  progress.querySelector(".cm-download-progress-track").setAttribute("aria-valuenow", String(value));
+  progress.querySelector(".cm-download-progress-fill").style.width = `${value}%`;
+  progress.classList.remove("is-indeterminate");
+}
+
+function finishCaseDownloadProgress(token, label, isError = false) {
+  if (token !== activeCaseDownloadProgress) return;
+  updateCaseDownloadProgress(token, label, 100);
+  const progress = ensureCaseDownloadProgress();
+  progress.classList.toggle("is-error", isError);
+  caseDownloadProgressTimer = setTimeout(() => {
+    if (token !== activeCaseDownloadProgress) return;
+    progress.classList.add("is-hidden");
+    activeCaseDownloadProgress = null;
+  }, isError ? 3500 : 1800);
+}
+
 // Bundles jaw meshes (including surveyed PLY copies), extra 3D uploads, the 2D
 // JPEG, reference images and the .docx report. Each part is best-effort.
 async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
@@ -842,6 +896,7 @@ async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
   }
 
   toast.info("Preparing download…");
+  const progressToken = beginCaseDownloadProgress("Collecting jaw files…");
   const base = String(caseLabel || `case_${caseIntId}`).replace(/[^a-z0-9_\-]+/gi, "_");
   const zip = new window.JSZip();
   let added = 0;
@@ -892,6 +947,7 @@ async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
   } catch (err) {
     console.warn("[case/download] STL bundling failed", err);
   }
+  updateCaseDownloadProgress(progressToken, "Collecting Extra 3D files…", 32);
 
   // 2) Extra 3D files, in their own folder so an uploaded name can't collide
   //     with a jaw mesh at the zip root.
@@ -912,6 +968,7 @@ async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
   } catch (err) {
     console.warn("[case/download] extra 3D files failed", err);
   }
+  updateCaseDownloadProgress(progressToken, "Preparing 2D design image…", 52);
 
   // 3) 2D design JPEG (thumbnail slot 0).
   try {
@@ -923,6 +980,7 @@ async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
   } catch (err) {
     console.warn("[case/download] 2D JPEG failed", err);
   }
+  updateCaseDownloadProgress(progressToken, "Collecting reference images…", 64);
 
   // 4) Reference images, kept in their own folder so they don't collide with
   //     the STL/report names at the zip root.
@@ -935,6 +993,7 @@ async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
   } catch (err) {
     console.warn("[case/download] reference images failed", err);
   }
+  updateCaseDownloadProgress(progressToken, "Preparing case report…", 76);
 
   // 5) Design report as a Word .docx.
   try {
@@ -948,16 +1007,21 @@ async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
 
   if (!added) {
     toast.info("No files available to download for this case.");
+    finishCaseDownloadProgress(progressToken, "No files available", true);
     return;
   }
 
   try {
-    const blob = await zip.generateAsync({ type: "uint8array" });
+    const blob = await zip.generateAsync({ type: "uint8array" }, ({ percent }) => {
+      updateCaseDownloadProgress(progressToken, "Packaging case ZIP…", 85 + percent * 0.15);
+    });
     triggerBlobDownload(blob, `${base}.zip`);
     toast.success("Download ready.");
+    finishCaseDownloadProgress(progressToken, "Case ZIP downloaded");
   } catch (err) {
     console.error("❌ Failed to generate zip:", err);
     toast.error(`Failed to generate zip: ${err.message || err}`);
+    finishCaseDownloadProgress(progressToken, "Case ZIP download failed", true);
   }
 }
 
