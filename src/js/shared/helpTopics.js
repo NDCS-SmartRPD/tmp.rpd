@@ -569,7 +569,7 @@ export const HELP_TOPICS = [
     keywords: ["download", "export", "save", "reference", "image", "photo", "picture", "attachment", "file", "get"],
     phrases: ["how do i download the reference images", "get the photos back", "export reference images"],
     answer:
-      "Download Reference Images in the case-actions menu saves every reference image added to the case — one file if there is a single image, a zip if there are several. The download icon on the case row includes them too, in a reference_images folder alongside the STLs and the report.",
+      "Download Reference Images in the case-actions menu saves every reference image added to the case — one file if there is a single image, a zip if there are several. The download icon on the case row includes them too, in a reference_images folder alongside the original jaw meshes, surveyed PLY heatmaps (when survey angles are saved), and the report.",
     steps: [
       { text: "Select the case in the list.", ...PICK_CASE },
       { text: "Open the ☰ menu beside the case name.", selector: CASE_MENU, ...IN_DETAIL },

@@ -43,6 +43,10 @@ import { recordCollaborators, reconcileCollaborators } from "../shared/userSugge
 import { confirmRemoveUserFromCase } from "../shared/caseRoles.js";
 import { createCaseHistory } from "../shared/caseHistory.js";
 import { caseListFilterText, matchesCaseListFilter, parseCaseListFilter } from "../shared/caseListFilter.js";
+import {
+  buildSurveyHeatmapPly,
+  savedSurveyDirection,
+} from "../../viewer3d/surveyHeatmapPly.js";
 
 // Per-user cache of the last case list, painted instantly while
 // /case/user/findall/get is in flight. Keyed by uuid so lists never cross accounts.
@@ -592,6 +596,57 @@ async function fetchCaseStls(caseIntId, uuid) {
   return [];
 }
 
+function jawKeyFromMeshFile(file) {
+  const raw = file?.type ?? file?.jaw_type;
+  if (raw === 1 || raw === "1") return "upper";
+  if (raw === 2 || raw === "2") return "lower";
+  const hint = `${raw || ""} ${file?.filename || ""}`.toLowerCase();
+  if (hint.includes("upper")) return "upper";
+  if (hint.includes("lower")) return "lower";
+  return null;
+}
+
+async function collectSurveyHeatmapPlyFiles(caseIntId, user, files) {
+  if (!files.length) return [];
+  const caseRow = await fetchCaseRow(caseIntId, user);
+  if (!caseRow) return [];
+
+  const meshes = new Map();
+  files.forEach((file) => {
+    const jaw = jawKeyFromMeshFile(file);
+    if (jaw && !meshes.has(jaw)) meshes.set(jaw, file);
+  });
+
+  const output = [];
+  for (const [jaw, file] of meshes) {
+    const direction = savedSurveyDirection(caseRow, jaw);
+    if (!direction) continue;
+    try {
+      const res = await fetch(`${API_BASE}/dll/compute-surveying-no-pd`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify([
+          { machine_id: MACHINE_ID, uuid: user.uuid, caseIntID: caseIntId },
+          {
+            case_id: caseIntId,
+            type: jaw === "upper" ? 1 : 2,
+            dir: direction,
+            printFullSurveying: true,
+            returnSurveyingBase64: true,
+          },
+        ]),
+      });
+      logApi(res, `POST /dll/compute-surveying-no-pd (${jaw})`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const ply = buildSurveyHeatmapPly(base64ToBytes(file.data), await res.json());
+      output.push({ jaw, ply });
+    } catch (err) {
+      console.warn(`[case/download] ${jaw} survey heatmap PLY failed`, err);
+    }
+  }
+  return output;
+}
+
 // The four extra 3D slots (POST /stl/slot/), which /stl/get doesn't return. One
 // at a time and decoded as they arrive — an occupied slot returns tens of MB.
 async function fetchExtraStlSlots(caseIntId, uuid) {
@@ -773,8 +828,8 @@ async function fetchCase2dJpegBytes(caseIntId, uuid) {
   }
 }
 
-// Bundles STLs, extra 3D uploads, the 2D JPEG, reference images and the .docx
-// report into one zip. Each part is best-effort; only an empty result aborts.
+// Bundles jaw meshes (including surveyed PLY copies), extra 3D uploads, the 2D
+// JPEG, reference images and the .docx report. Each part is best-effort.
 async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
   const user = getLoggedInUser();
   if (!user?.uuid || caseIntId == null) {
@@ -791,7 +846,7 @@ async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
   const zip = new window.JSZip();
   let added = 0;
 
-  // 1) STL files.
+  // 1) Original jaw meshes plus surveyed PLY copies when saved angles exist.
   try {
     const files = await fetchCaseStls(caseIntId, user.uuid);
     const usedNames = new Set();
@@ -828,6 +883,11 @@ async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
       } catch (err) {
         console.error("❌ Failed to add STL to zip:", name, err);
       }
+    });
+    const heatmaps = await collectSurveyHeatmapPlyFiles(caseIntId, user, files);
+    heatmaps.forEach(({ jaw, ply }) => {
+      zip.file(`survey_heatmap/${jaw}.ply`, ply);
+      added += 1;
     });
   } catch (err) {
     console.warn("[case/download] STL bundling failed", err);
