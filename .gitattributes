@@ -8,3 +8,4 @@
 
 # Reference enum dump is CRLF; keep it diffable but never normalized.
 StructData.cs   text eol=crlf
+graphify-out/graph.json merge=graphify

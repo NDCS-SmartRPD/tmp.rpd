@@ -17,6 +17,9 @@ postman/*environment*.json
 coverage/
 eslint-report.json
 
+# Local Graphify output
+graphify-out/
+
 # Webpack build output
 
 .idea/
