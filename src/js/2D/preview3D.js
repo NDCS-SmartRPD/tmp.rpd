@@ -31,6 +31,7 @@ import {
   geometryToBinaryPly,
   prepareMeshUpload,
 } from "../../viewer3d/plyTextureBake.js";
+import { heatmapPlyFilename } from "../../viewer3d/surveyHeatmapPly.js";
 
 // Re-exported: sibling 2D modules import it from here.
 export { getLoggedInUser };
@@ -4815,7 +4816,7 @@ async function downloadJawPlysAsZip() {
     }
 
     const zip = new window.JSZip();
-    jaws.forEach(({ jaw, data }, index) => {
+    jaws.forEach(({ jaw, data, filename }, index) => {
       updateDownloadProgress(
         progressToken,
         `Baking ${jaw} jaw heatmap…`,
@@ -4823,7 +4824,7 @@ async function downloadJawPlysAsZip() {
       );
       const geometry = buildJawHeatmapPlyGeometry(jaw, data);
       try {
-        zip.file(`${jaw}.ply`, geometryToBinaryPly(geometry));
+        zip.file(heatmapPlyFilename(filename, jaw), geometryToBinaryPly(geometry));
       } finally {
         geometry.dispose();
       }

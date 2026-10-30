@@ -1,5 +1,6 @@
 import {
   buildSurveyHeatmapPly,
+  heatmapPlyFilename,
   savedSurveyDirection,
 } from "../src/viewer3d/surveyHeatmapPly.js";
 import fs from "node:fs";
@@ -12,6 +13,14 @@ const caseManagementSource = fs.readFileSync(
 const caseListStyles = fs.readFileSync(path.resolve("css/case_list.css"), "utf8");
 
 describe("survey heatmap PLY export", () => {
+  test("keeps the saved jaw filename stem and safely changes its extension", () => {
+    expect(heatmapPlyFilename("SWIFT_R008_-_Model_(Upper).stl", "upper"))
+      .toBe("SWIFT_R008_-_Model_(Upper).ply");
+    expect(heatmapPlyFilename("folder\\Lower Jaw.off", "lower"))
+      .toBe("Lower Jaw.ply");
+    expect(heatmapPlyFilename(null, "upper")).toBe("upper.ply");
+  });
+
   test("restores the DLL direction from a saved upper survey angle", () => {
     expect(savedSurveyDirection({
       upper_insertion_angle_x: 0,
@@ -43,7 +52,7 @@ describe("survey heatmap PLY export", () => {
   test("adds recomputed surveyed jaws to the case-list download bundle", () => {
     expect(caseManagementSource).toContain("/dll/compute-surveying-no-pd");
     expect(caseManagementSource).toContain("buildSurveyHeatmapPly");
-    expect(caseManagementSource).toContain('zip.file(`survey_heatmap/${jaw}.ply`');
+    expect(caseManagementSource).toContain('zip.file(`survey_heatmap/${filename}`');
   });
 
   test("shows responsive non-blocking packaging progress for the case ZIP", () => {

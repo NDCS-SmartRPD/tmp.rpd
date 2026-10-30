@@ -4,6 +4,13 @@ const linearToSrgbByte = (value) => Math.round(255 * Math.max(0, Math.min(1,
   value <= 0.0031308 ? value * 12.92 : 1.055 * Math.pow(value, 1 / 2.4) - 0.055
 )));
 
+export function heatmapPlyFilename(filename, fallback = "jaw") {
+  const leaf = String(filename || "").split(/[\\/]/).pop().trim();
+  const safe = leaf.replace(/[<>:"|?*]+/g, "_");
+  const stem = safe.replace(/\.[^.]+$/, "") || fallback;
+  return `${stem}.ply`;
+}
+
 function surveyColor(value) {
   const v = Math.max(0, Number(value) || 0);
   if (v <= 0) return TOOTH_COLOR.map(linearToSrgbByte);

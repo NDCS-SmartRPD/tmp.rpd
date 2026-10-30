@@ -75,7 +75,7 @@ describe("2D preview tab lifecycle", () => {
     expect(downloadMenu).toContain("buildDualDedupGeometry");
     expect(downloadMenu).toContain("geometryToBinaryPly");
     expect(downloadMenu).toContain("preview3DState.undercut?.[jaw]");
-    expect(downloadMenu).toContain('zip.file(`${jaw}.ply`');
+    expect(downloadMenu).toContain("heatmapPlyFilename(filename, jaw)");
     expect(downloadMenu).toContain("await waitForDownloadPaint()");
   });
 });

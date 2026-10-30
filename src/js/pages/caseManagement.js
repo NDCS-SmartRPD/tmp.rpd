@@ -45,6 +45,7 @@ import { createCaseHistory } from "../shared/caseHistory.js";
 import { caseListFilterText, matchesCaseListFilter, parseCaseListFilter } from "../shared/caseListFilter.js";
 import {
   buildSurveyHeatmapPly,
+  heatmapPlyFilename,
   savedSurveyDirection,
 } from "../../viewer3d/surveyHeatmapPly.js";
 
@@ -639,7 +640,7 @@ async function collectSurveyHeatmapPlyFiles(caseIntId, user, files) {
       logApi(res, `POST /dll/compute-surveying-no-pd (${jaw})`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const ply = buildSurveyHeatmapPly(base64ToBytes(file.data), await res.json());
-      output.push({ jaw, ply });
+      output.push({ jaw, filename: heatmapPlyFilename(file.filename, jaw), ply });
     } catch (err) {
       console.warn(`[case/download] ${jaw} survey heatmap PLY failed`, err);
     }
@@ -940,8 +941,8 @@ async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
       }
     });
     const heatmaps = await collectSurveyHeatmapPlyFiles(caseIntId, user, files);
-    heatmaps.forEach(({ jaw, ply }) => {
-      zip.file(`survey_heatmap/${jaw}.ply`, ply);
+    heatmaps.forEach(({ filename, ply }) => {
+      zip.file(`survey_heatmap/${filename}`, ply);
       added += 1;
     });
   } catch (err) {
