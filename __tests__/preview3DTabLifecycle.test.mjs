@@ -63,4 +63,18 @@ describe("2D preview tab lifecycle", () => {
     expect(styles).toContain("pointer-events: none");
     expect(styles).toContain("env(safe-area-inset-bottom");
   });
+
+  test("offers a PLY ZIP with the applied undercut colours baked into each jaw", () => {
+    const downloadMenu = source.slice(
+      source.indexOf("function ensureDownloadJawProfileModal"),
+      source.indexOf("// ---- Jaw panel rows")
+    );
+
+    expect(downloadMenu).toContain("Download PLY heatmap");
+    expect(downloadMenu).toContain("downloadJawPlysAsZip()");
+    expect(downloadMenu).toContain("buildDualDedupGeometry");
+    expect(downloadMenu).toContain("geometryToBinaryPly");
+    expect(downloadMenu).toContain("preview3DState.undercut?.[jaw]");
+    expect(downloadMenu).toContain('zip.file(`${jaw}.ply`');
+  });
 });

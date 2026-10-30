@@ -27,7 +27,10 @@ import {
   meshFileKind,
   normalizeJawMeshFile,
 } from "../../viewer3d/meshFileSupport.js";
-import { prepareMeshUpload } from "../../viewer3d/plyTextureBake.js";
+import {
+  geometryToBinaryPly,
+  prepareMeshUpload,
+} from "../../viewer3d/plyTextureBake.js";
 
 // Re-exported: sibling 2D modules import it from here.
 export { getLoggedInUser };
@@ -4502,7 +4505,7 @@ function enableSlotDropZone(el, slot) {
 // ---- Download jaw profile ------------------------------------------------
 
 // `request-download-jaw-profile` (footer + noticeboard) opens this menu: jaw STLs,
-// original Extra 3D slot files, or JPEG (reuses the "Save as JPEG" arch export).
+// surveyed jaw PLYs, original Extra 3D slot files, or JPEG.
 function ensureDownloadJawProfileModal() {
   if (preview3DState.downloadJawModal) return preview3DState.downloadJawModal;
 
@@ -4549,6 +4552,18 @@ function ensureDownloadJawProfileModal() {
     downloadJawStlsAsZip();
   });
 
+  const plyBtn = document.createElement("button");
+  plyBtn.type = "button";
+  plyBtn.className = "jaw-dl-option";
+  plyBtn.innerHTML =
+    '<i class="fa fa-palette" aria-hidden="true"></i>' +
+    '<span class="jaw-dl-option-title">Download PLY heatmap</span>' +
+    '<span class="jaw-dl-option-sub">Applied undercut colours baked into a .zip</span>';
+  plyBtn.addEventListener("click", () => {
+    closeDownloadJawProfileModal();
+    downloadJawPlysAsZip();
+  });
+
   const extraBtn = document.createElement("button");
   extraBtn.type = "button";
   extraBtn.className = "jaw-dl-option";
@@ -4575,6 +4590,7 @@ function ensureDownloadJawProfileModal() {
   });
 
   options.appendChild(stlBtn);
+  options.appendChild(plyBtn);
   options.appendChild(extraBtn);
   options.appendChild(jpegBtn);
   panel.appendChild(header);
@@ -4728,6 +4744,102 @@ async function downloadJawStlsAsZip() {
     console.error("[preview3D] STL zip download failed", err);
     setMessage("Failed to download STL files.", true);
     finishDownloadProgress(progressToken, "Jaw download failed", true);
+  }
+}
+
+function buildJawHeatmapPlyGeometry(jaw, data) {
+  const buffer = base64ToArrayBuffer(data);
+  const payloadInfo = inspectMeshPayload(buffer);
+  const surface = preview3DState.undercut?.[jaw];
+  const heatmapVertexCount = surveyingVertexCount(surface);
+
+  if (payloadInfo.format === "off") {
+    const geometry = parseOFFToGeometry(new TextDecoder().decode(buffer));
+    if (!geometry) throw new Error(`Could not parse the ${jaw} jaw mesh.`);
+    if (heatmapVertexCount > 0) {
+      applyUndercutVertexColors(geometry, surface);
+      snapVertexColorBands(geometry, 2);
+    } else {
+      applyBaseVertexColors(geometry);
+    }
+    return geometry;
+  }
+
+  if (!["binary-stl", "ascii-stl"].includes(payloadInfo.format)) {
+    throw new Error(`Unsupported ${jaw} jaw mesh format.`);
+  }
+
+  const rawGeometry = new STLLoader().parse(buffer);
+  if (heatmapVertexCount > 0) {
+    const result = buildDualDedupGeometry(rawGeometry, surface, heatmapVertexCount);
+    rawGeometry.dispose();
+    return result.geometry;
+  }
+
+  const geometry = mergeStlVertices(rawGeometry);
+  rawGeometry.dispose();
+  applyBaseVertexColors(geometry);
+  return geometry;
+}
+
+async function downloadJawPlysAsZip() {
+  if (typeof window.JSZip === "undefined") {
+    setMessage("ZIP library failed to load — cannot download PLY files.", true);
+    return;
+  }
+
+  const progressToken = beginDownloadProgress("Preparing undercut PLY files…");
+  try {
+    setMessage("Preparing PLY heatmap download…", false);
+    await ensureThreeDeps();
+    const jaws = await collectJawStlFiles();
+    if (!jaws.length) {
+      setMessage("No jaw mesh files found for this case.", true);
+      finishDownloadProgress(progressToken, "No jaw files found", true);
+      return;
+    }
+
+    const hasSurveyHeatmap = jaws.some(({ jaw }) =>
+      surveyingVertexCount(preview3DState.undercut?.[jaw]) > 0
+    );
+    if (!hasSurveyHeatmap) {
+      setMessage("Apply a survey angle before downloading a PLY heatmap.", true);
+      finishDownloadProgress(progressToken, "No undercut heatmap applied", true);
+      return;
+    }
+
+    const zip = new window.JSZip();
+    jaws.forEach(({ jaw, data }, index) => {
+      updateDownloadProgress(
+        progressToken,
+        `Baking ${jaw} jaw heatmap…`,
+        5 + (index / jaws.length) * 45
+      );
+      const geometry = buildJawHeatmapPlyGeometry(jaw, data);
+      try {
+        zip.file(`${jaw}.ply`, geometryToBinaryPly(geometry));
+      } finally {
+        geometry.dispose();
+      }
+    });
+
+    const blob = await zip.generateAsync({ type: "blob" }, ({ percent }) => {
+      updateDownloadProgress(progressToken, "Preparing PLY ZIP…", 50 + percent * 0.5);
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `case_${state.caseIntID ?? "unknown"}_jaw_heatmap_ply.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setMessage(`Downloaded ${jaws.length} jaw PLY file(s) with baked colours.`, false);
+    finishDownloadProgress(progressToken, "PLY heatmap ZIP downloaded");
+  } catch (err) {
+    console.error("[preview3D] PLY heatmap zip download failed", err);
+    setMessage("Failed to download PLY heatmap files.", true);
+    finishDownloadProgress(progressToken, "PLY heatmap download failed", true);
   }
 }
 
