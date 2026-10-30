@@ -32,24 +32,24 @@ describe("meshGroupToPly", () => {
     expect(ply).toContain("3 0 1 2");
   });
 
-  test("writes undercut vertex colours as standard PLY RGB bytes", () => {
+  test("writes undercut colours as 3Shape palette texture coordinates", () => {
     const bytes = meshGroupToPly([
       mesh({ color: [1, 0, 0, 0, 1, 0, 0, 0, 1] }),
     ]);
     const ply = text(bytes);
 
-    expect(ply).toContain("property uchar red");
-    expect(ply).toContain("255 0 0");
-    expect(ply).toContain("0 255 0");
-    expect(ply).toContain("0 0 255");
+    expect(ply).toContain("comment TextureFile Undercut.jpg");
+    expect(ply).toContain("comment provider 3Shape");
+    expect(ply).toContain("property list uchar float texcoord");
+    expect(ply).not.toContain("property uchar red");
   });
 
-  test("converts three.js linear heatmap colours back to display RGB", () => {
+  test("maps three.js linear colours onto the shared palette", () => {
     const bytes = meshGroupToPly([
       mesh({ color: [0.21404114, 0.21404114, 0.21404114, 1, 0, 0, 0, 1, 0] }),
     ]);
 
-    expect(text(bytes)).toContain("128 128 128");
+    expect(text(bytes)).toContain("property list uchar float texcoord");
   });
 
   test("combines multiple rendered meshes with valid face offsets", () => {

@@ -12,6 +12,37 @@ const linearToSrgbByte = (value) => Math.round(255 * Math.max(0, Math.min(1,
   value <= 0.0031308 ? value * 12.92 : 1.055 * Math.pow(value, 1 / 2.4) - 0.055
 )));
 
+const THREE_SHAPE_BANDS = [
+  { rgb: [208, 190, 141], v: 0.5 },
+  { rgb: [255, 210, 0], v: 5 / 12 },
+  { rgb: [253, 140, 0], v: 0.25 },
+  { rgb: [254, 70, 0], v: 1 / 12 },
+  { rgb: [170, 0, 3], v: 0 },
+];
+
+export function colorAttributeTo3ShapeV(color, index) {
+  if (!color || index < 0 || index >= color.count) return THREE_SHAPE_BANDS[0].v;
+  const values = color.getX
+    ? [color.getX(index), color.getY(index), color.getZ(index)]
+    : [0, 1, 2].map((channel) => color.array[index * color.itemSize + channel]);
+  const isToothTan = Math.abs(values[0] - 208 / 255) < 0.0001
+    && Math.abs(values[1] - 190 / 255) < 0.0001
+    && Math.abs(values[2] - 141 / 255) < 0.0001;
+  const rgb = isToothTan ? [208, 190, 141] : values.map(linearToSrgbByte);
+  let nearest = THREE_SHAPE_BANDS[0];
+  let distance = Infinity;
+  for (const band of THREE_SHAPE_BANDS) {
+    const next = (rgb[0] - band.rgb[0]) ** 2
+      + (rgb[1] - band.rgb[1]) ** 2
+      + (rgb[2] - band.rgb[2]) ** 2;
+    if (next < distance) {
+      nearest = band;
+      distance = next;
+    }
+  }
+  return nearest.v;
+}
+
 export function geometryToBinaryPly(geometry) {
   const position = geometry?.getAttribute?.("position");
   const color = geometry?.getAttribute?.("color");
