@@ -77,5 +77,8 @@ describe("2D preview tab lifecycle", () => {
     expect(downloadMenu).toContain("preview3DState.undercut?.[jaw]");
     expect(downloadMenu).toContain("heatmapPlyFilename(filename, jaw)");
     expect(downloadMenu).toContain("await waitForDownloadPaint()");
+    expect(downloadMenu).toContain(
+      "requestAnimationFrame(() => window.requestAnimationFrame(resolve))"
+    );
   });
 });

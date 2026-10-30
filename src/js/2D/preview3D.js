@@ -4683,7 +4683,9 @@ function finishDownloadProgress(token, label, isError = false) {
 }
 
 function waitForDownloadPaint() {
-  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+  return new Promise((resolve) =>
+    window.requestAnimationFrame(() => window.requestAnimationFrame(resolve))
+  );
 }
 
 async function downloadJawProfileJpeg() {
