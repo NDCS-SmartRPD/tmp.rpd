@@ -91,6 +91,54 @@ export function applyTextureToGeometry(geometry, pixels, width, height) {
   return geometry;
 }
 
+function geometryToBinaryStl(geometry) {
+  const position = geometry?.getAttribute?.("position");
+  const index = geometry?.getIndex?.();
+  if (!position?.count) throw new Error("PLY geometry does not contain vertices.");
+  const triangleCount = Math.floor((index?.count ?? position.count) / 3);
+  if (!triangleCount) throw new Error("PLY geometry does not contain triangles.");
+
+  const buffer = new ArrayBuffer(84 + triangleCount * 50);
+  const view = new DataView(buffer);
+  view.setUint32(80, triangleCount, true);
+  const vertex = (offset) => {
+    const i = index ? index.getX(offset) : offset;
+    return [position.getX(i), position.getY(i), position.getZ(i)];
+  };
+  let offset = 84;
+  for (let triangle = 0; triangle < triangleCount; triangle += 1) {
+    const a = vertex(triangle * 3);
+    const b = vertex(triangle * 3 + 1);
+    const c = vertex(triangle * 3 + 2);
+    let nx = (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]);
+    let ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
+    let nz = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    const length = Math.hypot(nx, ny, nz) || 1;
+    nx /= length;
+    ny /= length;
+    nz /= length;
+    for (const value of [nx, ny, nz, ...a, ...b, ...c]) {
+      view.setFloat32(offset, value, true);
+      offset += 4;
+    }
+    view.setUint16(offset, 0, true);
+    offset += 2;
+  }
+  return buffer;
+}
+
+export async function plyFileToBinaryStl(file, PLYLoader) {
+  if (!file?.arrayBuffer) throw new Error("PLY file is unavailable.");
+  if (!PLYLoader) throw new Error("PLY loader is unavailable.");
+  const geometry = new PLYLoader().parse(await file.arrayBuffer());
+  if (!geometry?.getAttribute) throw new Error("PLY geometry could not be parsed.");
+  try {
+    return geometryToBinaryStl(geometry);
+  } finally {
+    geometry.dispose?.();
+  }
+}
+
 const textureInfoFromPly = (bytes) => {
   const header = new TextDecoder("ascii").decode(bytes.subarray(0, Math.min(bytes.length, 16384)));
   return {
