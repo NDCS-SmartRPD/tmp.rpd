@@ -48,6 +48,10 @@ import {
   heatmapPlyFilename,
   savedSurveyDirection,
 } from "../../viewer3d/surveyHeatmapPly.js";
+import {
+  isPlyBytes,
+  plyBytesToBinaryStl,
+} from "../../viewer3d/meshFileSupport.js";
 
 // Per-user cache of the last case list, painted instantly while
 // /case/user/findall/get is in flight. Keyed by uuid so lists never cross accounts.
@@ -607,6 +611,15 @@ function jawKeyFromMeshFile(file) {
   return null;
 }
 
+async function surveyHeatmapSourceBytes(data) {
+  const bytes = base64ToBytes(data);
+  if (!isPlyBytes(bytes)) return bytes;
+  const { PLYLoader } = await import(
+    /* webpackMode: "eager" */ "three/addons/loaders/PLYLoader.js"
+  );
+  return new Uint8Array(plyBytesToBinaryStl(bytes, PLYLoader));
+}
+
 async function collectSurveyHeatmapPlyFiles(caseIntId, user, files) {
   if (!files.length) return [];
   const caseRow = await fetchCaseRow(caseIntId, user);
@@ -639,7 +652,8 @@ async function collectSurveyHeatmapPlyFiles(caseIntId, user, files) {
       });
       logApi(res, `POST /dll/compute-surveying-no-pd (${jaw})`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const ply = buildSurveyHeatmapPly(base64ToBytes(file.data), await res.json());
+      const meshBytes = await surveyHeatmapSourceBytes(file.data);
+      const ply = buildSurveyHeatmapPly(meshBytes, await res.json());
       output.push({ jaw, filename: heatmapPlyFilename(file.filename, jaw), ply });
     } catch (err) {
       console.warn(`[case/download] ${jaw} survey heatmap PLY failed`, err);
@@ -942,7 +956,9 @@ async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
     });
     const heatmaps = await collectSurveyHeatmapPlyFiles(caseIntId, user, files);
     heatmaps.forEach(({ filename, ply }) => {
-      zip.file(`survey_heatmap/${filename}`, ply);
+      // Keep the baked PLY at the ZIP root. For a legacy case whose saved jaw
+      // is already PLY, JSZip replaces the uncoloured entry of the same name.
+      zip.file(filename, ply);
       added += 1;
     });
   } catch (err) {

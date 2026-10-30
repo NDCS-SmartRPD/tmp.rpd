@@ -47,6 +47,26 @@ export const geometryToBinaryStl = (geometry) => {
   return buffer;
 };
 
+export const isPlyBytes = (value) => {
+  const bytes = value instanceof Uint8Array ? value : new Uint8Array(value || 0);
+  return bytes.length >= 3
+    && bytes[0] === 0x70
+    && bytes[1] === 0x6c
+    && bytes[2] === 0x79;
+};
+
+export const plyBytesToBinaryStl = (value, PLYLoader) => {
+  if (!PLYLoader) throw new Error("PLY loader is unavailable.");
+  const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+  const source = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  const geometry = new PLYLoader().parse(source);
+  try {
+    return geometryToBinaryStl(geometry);
+  } finally {
+    geometry?.dispose?.();
+  }
+};
+
 // Jaw API and DLL endpoints consume STL records. PLY is accepted at the UI boundary,
 // then normalized once so every downstream survey/occlusion path keeps its existing contract.
 export async function normalizeJawMeshFile(file, PLYLoader) {

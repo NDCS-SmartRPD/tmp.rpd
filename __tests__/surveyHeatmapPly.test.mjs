@@ -3,6 +3,10 @@ import {
   heatmapPlyFilename,
   savedSurveyDirection,
 } from "../src/viewer3d/surveyHeatmapPly.js";
+import {
+  isPlyBytes,
+  plyBytesToBinaryStl,
+} from "../src/viewer3d/meshFileSupport.js";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -52,7 +56,34 @@ describe("survey heatmap PLY export", () => {
   test("adds recomputed surveyed jaws to the case-list download bundle", () => {
     expect(caseManagementSource).toContain("/dll/compute-surveying-no-pd");
     expect(caseManagementSource).toContain("buildSurveyHeatmapPly");
-    expect(caseManagementSource).toContain('zip.file(`survey_heatmap/${filename}`');
+    expect(caseManagementSource).toContain("surveyHeatmapSourceBytes");
+    expect(caseManagementSource).toContain("zip.file(filename, ply)");
+    expect(caseManagementSource).not.toContain('zip.file(`survey_heatmap/${filename}`');
+  });
+
+  test("normalizes a stored PLY payload before survey colours are baked", () => {
+    const source = new TextEncoder().encode("ply\nformat ascii 1.0\nend_header\n");
+    const dispose = jest.fn();
+    const geometry = {
+      attributes: {
+        position: {
+          count: 3,
+          getX: (index) => [0, 1, 0][index],
+          getY: (index) => [0, 0, 1][index],
+          getZ: () => 0,
+        },
+      },
+      index: null,
+      dispose,
+    };
+    const parse = jest.fn(() => geometry);
+
+    expect(isPlyBytes(source)).toBe(true);
+    const stl = plyBytesToBinaryStl(source, class { parse = parse; });
+
+    expect(parse).toHaveBeenCalledTimes(1);
+    expect(new DataView(stl).getUint32(80, true)).toBe(1);
+    expect(dispose).toHaveBeenCalledTimes(1);
   });
 
   test("shows responsive non-blocking packaging progress for the case ZIP", () => {
