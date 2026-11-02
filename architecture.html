@@ -1097,12 +1097,22 @@ const flows = {
   },
   auth_access: {
     name: "Login, identity and access checks",
-    note: "Verified client behavior includes caller identity and server-side admin checks; OTP is currently disabled.",
+    note: "Login uses active OTP-based multi-factor authentication before access is granted.",
     steps: [
       {
         from:"user", to:"api", color:"--c-user", title:"Submit login", route:"POST /user/login",
         desc:"Credentials are sent over HTTPS to the API. The repository shows the login endpoint and client workflow.",
         payload:`POST /api/smartrpd/user/login\n[ { "machine_id": "…" }, { "username": "…", "password": "…" } ]`, chips:["HTTPS"]
+      },
+      {
+        from:"api", to:"user", color:"--c-orch", title:"Issue OTP challenge", route:"MFA challenge",
+        desc:"After the primary credential check, SmartRPD issues an OTP challenge as the second authentication factor.",
+        payload:`OTP challenge → registered user channel`, chips:["MFA active","one-time code"]
+      },
+      {
+        from:"user", to:"api", color:"--c-user", title:"Verify OTP", route:"OTP verification",
+        desc:"The user submits the one-time code. The API verifies it before establishing authenticated access.",
+        payload:`{ "otp": "••••••" }`, chips:["second factor","required"]
       },
       {
         from:"api", to:"db", color:"--c-vector", title:"Validate user and role", route:"identity / role lookup",

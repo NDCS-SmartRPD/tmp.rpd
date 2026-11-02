@@ -123,7 +123,7 @@ The endpoint list is representative, not a substitute for an authoritative OpenA
 - This checkout contains the frontend and delivery workflow, not the SmartRPD backend or GCP infrastructure-as-code.
 - “GCP API” and “GCP database” follow the requested deployment description; the exact GCP products are intentionally not invented.
 - Controls listed under “must be confirmed” are shown as required control points, not claimed as implemented.
-- OTP UI exists but is disabled in the current frontend, so the diagram does not claim MFA is active.
+- OTP UI exists, and OTP-based multi-factor authentication is active and used during login.
 
 ## Workshop scenarios
 
