@@ -64,7 +64,7 @@ describe("2D preview tab lifecycle", () => {
     expect(styles).toContain("env(safe-area-inset-bottom");
   });
 
-  test("offers a PLY ZIP with the applied undercut colours baked into each jaw", () => {
+  test("offers a PLY ZIP with canonical 3Shape PLY/JPG pairs for each surveyed jaw", () => {
     const downloadMenu = source.slice(
       source.indexOf("function ensureDownloadJawProfileModal"),
       source.indexOf("// ---- Jaw panel rows")
@@ -72,13 +72,21 @@ describe("2D preview tab lifecycle", () => {
 
     expect(downloadMenu).toContain("Download PLY heatmap");
     expect(downloadMenu).toContain("downloadJawPlysAsZip()");
-    expect(downloadMenu).toContain("buildDualDedupGeometry");
-    expect(downloadMenu).toContain("geometryToBinaryPly");
+    expect(downloadMenu).toContain("buildSurveyHeatmapPlyPackage");
     expect(downloadMenu).toContain("preview3DState.undercut?.[jaw]");
-    expect(downloadMenu).toContain("heatmapPlyFilename(filename, jaw)");
+    expect(downloadMenu).toContain("textureFilename");
     expect(downloadMenu).toContain("await waitForDownloadPaint()");
     expect(downloadMenu).toContain(
       "requestAnimationFrame(() => window.requestAnimationFrame(resolve))"
     );
+  });
+
+  test("downloads Extra 3D sources by slot and includes canonical palette JPGs", () => {
+    const downloadMenu = source.slice(
+      source.indexOf("function ensureDownloadJawProfileModal"),
+      source.indexOf("// ---- Jaw panel rows")
+    );
+    expect(downloadMenu).toContain("slot_${slotNumber}/${safeName}");
+    expect(downloadMenu).toContain("canonical3ShapeCompanion");
   });
 });

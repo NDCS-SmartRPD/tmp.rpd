@@ -1,5 +1,6 @@
 import {
   buildSurveyHeatmapPly,
+  buildSurveyHeatmapPlyPackage,
   heatmapPlyFilename,
   savedSurveyDirection,
 } from "../src/viewer3d/surveyHeatmapPly.js";
@@ -33,7 +34,7 @@ describe("survey heatmap PLY export", () => {
     }, "upper")).toEqual([0, -0.6, 0.8]);
   });
 
-  test("bakes survey bands into an OFF mesh as binary PLY vertex colours", () => {
+  test("exports survey depths as a canonical binary 3Shape 1D-UV PLY", () => {
     const mesh = new TextEncoder().encode([
       "OFF",
       "3 1 0",
@@ -43,14 +44,21 @@ describe("survey heatmap PLY export", () => {
       "3 0 1 2",
     ].join("\n"));
 
-    const ply = buildSurveyHeatmapPly(mesh, { surveying_values: [0, 0.3, 0.8] });
+    const ply = buildSurveyHeatmapPly(mesh, { surveying_values: [0, 0.3, 0.8] }, "Lower Jaw.jpg");
     const headerEnd = new TextDecoder().decode(ply).indexOf("end_header\n") + 11;
+    const header = new TextDecoder().decode(ply.subarray(0, headerEnd));
 
-    expect(new TextDecoder().decode(ply.subarray(0, headerEnd))).toContain("element vertex 3");
-    expect(Array.from(ply.subarray(headerEnd + 15 + 12, headerEnd + 15 + 15)))
-      .toEqual([253, 140, 0]);
-    expect(Array.from(ply.subarray(headerEnd + 30 + 12, headerEnd + 30 + 15)))
-      .toEqual([170, 0, 3]);
+    expect(header).toContain("comment TextureFile Lower Jaw.jpg");
+    expect(header).toContain("comment provider 3Shape");
+    expect(header).toContain("property list uchar float texcoord");
+    expect(header).not.toContain("property uchar red");
+    const face = new DataView(ply.buffer, ply.byteOffset + headerEnd + 36);
+    expect(face.getUint8(0)).toBe(3);
+    expect(face.getUint8(13)).toBe(6);
+    expect(face.getFloat32(14, true)).toBe(0);
+    expect(face.getFloat32(18, true)).toBeCloseTo(0.5);
+    expect(face.getFloat32(26, true)).toBeCloseTo(0.3);
+    expect(face.getFloat32(34, true)).toBeCloseTo(0.5 - (2 / 3) * 0.8);
   });
 
   test("prefers the full base64 survey values over the fallback array", () => {
@@ -73,15 +81,31 @@ describe("survey heatmap PLY export", () => {
     });
     const headerEnd = new TextDecoder().decode(ply).indexOf("end_header\n") + 11;
 
-    expect(Array.from(ply.subarray(headerEnd + 12, headerEnd + 15)))
-      .toEqual([170, 0, 3]);
+    const face = new DataView(ply.buffer, ply.byteOffset + headerEnd + 36);
+    expect(face.getFloat32(18, true)).toBeCloseTo(0.5 - (2 / 3) * 0.8);
+  });
+
+  test("packages a matching canonical palette JPG beside the PLY", () => {
+    const mesh = new TextEncoder().encode([
+      "OFF", "3 1 0", "0 0 0", "1 0 0", "0 1 0", "3 0 1 2",
+    ].join("\n"));
+    const result = buildSurveyHeatmapPlyPackage(
+      mesh,
+      { surveying_values: [0, 0.3, 0.8] },
+      "Saved Lower Jaw.stl",
+      "lower"
+    );
+    expect(result.plyFilename).toBe("Saved Lower Jaw.ply");
+    expect(result.textureFilename).toBe("Saved Lower Jaw.jpg");
+    expect(result.textureBytes.subarray(0, 2)).toEqual(new Uint8Array([0xff, 0xd8]));
+    expect(new TextDecoder().decode(result.ply)).toContain("comment TextureFile Saved Lower Jaw.jpg");
   });
 
   test("adds recomputed surveyed jaws to the case-list download bundle", () => {
     expect(caseManagementSource).toContain("/dll/compute-surveying-no-pd");
     expect(caseManagementSource).toContain("buildSurveyHeatmapPly");
     expect(caseManagementSource).toContain("surveyHeatmapSourceBytes");
-    expect(caseManagementSource).toContain("zip.file(filename, ply)");
+    expect(caseManagementSource).toContain("textureFilename");
     expect(caseManagementSource).not.toContain('zip.file(`survey_heatmap/${filename}`');
   });
 

@@ -44,10 +44,13 @@ import { confirmRemoveUserFromCase } from "../shared/caseRoles.js";
 import { createCaseHistory } from "../shared/caseHistory.js";
 import { caseListFilterText, matchesCaseListFilter, parseCaseListFilter } from "../shared/caseListFilter.js";
 import {
-  buildSurveyHeatmapPly,
-  heatmapPlyFilename,
+  buildSurveyHeatmapPlyPackage,
   savedSurveyDirection,
 } from "../../viewer3d/surveyHeatmapPly.js";
+import {
+  canonical3ShapeCompanion,
+  classifyPlyHeatmap,
+} from "../../viewer3d/plyTextureBake.js";
 import {
   isPlyBytes,
   plyBytesToBinaryStl,
@@ -653,8 +656,15 @@ async function collectSurveyHeatmapPlyFiles(caseIntId, user, files) {
       logApi(res, `POST /dll/compute-surveying-no-pd (${jaw})`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const meshBytes = await surveyHeatmapSourceBytes(file.data);
-      const ply = buildSurveyHeatmapPly(meshBytes, await res.json());
-      output.push({ jaw, filename: heatmapPlyFilename(file.filename, jaw), ply });
+      output.push({
+        jaw,
+        ...buildSurveyHeatmapPlyPackage(
+          meshBytes,
+          await res.json(),
+          file.filename,
+          jaw
+        ),
+      });
     } catch (err) {
       console.warn(`[case/download] ${jaw} survey heatmap PLY failed`, err);
     }
@@ -955,33 +965,54 @@ async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
       }
     });
     const heatmaps = await collectSurveyHeatmapPlyFiles(caseIntId, user, files);
-    heatmaps.forEach(({ filename, ply }) => {
-      // Keep the baked PLY at the ZIP root. For a legacy case whose saved jaw
-      // is already PLY, JSZip replaces the uncoloured entry of the same name.
-      zip.file(filename, ply);
-      added += 1;
+    heatmaps.forEach(({ plyFilename, textureFilename, ply, textureBytes }) => {
+      // Keep each canonical PLY and its referenced palette JPG together at the ZIP root.
+      // For a saved jaw already using the same PLY name, JSZip replaces that entry.
+      zip.file(plyFilename, ply);
+      zip.file(textureFilename, textureBytes);
+      added += 2;
     });
   } catch (err) {
     console.warn("[case/download] STL bundling failed", err);
   }
   updateCaseDownloadProgress(progressToken, "Collecting Extra 3D files…", 32);
 
-  // 2) Extra 3D files, in their own folder so an uploaded name can't collide
-  //     with a jaw mesh at the zip root.
+  // 2) Extra 3D sources grouped by slot. Canonical 3Shape PLYs receive the exact
+  //    palette JPG named by their TextureFile comment.
   try {
     const extras = await fetchExtraStlSlots(caseIntId, user.uuid);
-    const usedExtraNames = new Set();
     extras.forEach(({ slotNumber, filename, bytes }) => {
       let cleaned = String(filename || "").trim().replace(/[\\/:*?"<>|]+/g, "_");
       // Stored names are upload names, but an extension-less one won't open.
       if (cleaned && !/\.[a-z0-9]{2,5}$/i.test(cleaned)) cleaned += ".stl";
-      const name = uniqueDownloadName(
-        cleaned || `${base}_extra_${slotNumber}.stl`,
-        usedExtraNames
-      );
-      zip.file(`extra_3d/${name}`, bytes);
+      const name = cleaned || `${base}_extra_${slotNumber}.stl`;
+      zip.file(`slot_${slotNumber}/${name}`, bytes);
       added += 1;
     });
+    const { PLYLoader } = await import(
+      /* webpackMode: "eager" */ "three/addons/loaders/PLYLoader.js"
+    );
+    for (const { slotNumber, filename, bytes } of extras) {
+      if (!isPlyBytes(bytes)) continue;
+      const geometry = new PLYLoader().parse(bytes.buffer.slice(
+        bytes.byteOffset,
+        bytes.byteOffset + bytes.byteLength
+      ));
+      try {
+        const format = classifyPlyHeatmap(bytes, geometry);
+        const companion = canonical3ShapeCompanion(bytes, geometry);
+        if (companion) {
+          zip.file(`slot_${slotNumber}/${companion.name}`, companion.bytes);
+          added += 1;
+        } else if (format === "legacy-rgb") {
+          toast.warning(`${filename || `Slot ${slotNumber}`} is a legacy RGB PLY; exact 3Shape round-tripping requires the original PLY.`);
+        } else if (format === "noncanonical-textured") {
+          toast.warning(`${filename || `Slot ${slotNumber}`} uses a noncanonical PLY texture layout; the stored RGB fallback was retained.`);
+        }
+      } finally {
+        geometry.dispose?.();
+      }
+    }
   } catch (err) {
     console.warn("[case/download] extra 3D files failed", err);
   }

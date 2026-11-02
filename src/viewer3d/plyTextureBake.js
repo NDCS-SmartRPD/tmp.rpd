@@ -170,7 +170,7 @@ export async function plyFileToBinaryStl(file, PLYLoader) {
   }
 }
 
-const textureInfoFromPly = (bytes) => {
+export const textureInfoFromPly = (bytes) => {
   const header = new TextDecoder("ascii").decode(bytes.subarray(0, Math.min(bytes.length, 16384)));
   return {
     name: header.match(/^comment\s+TextureFile\s+(.+)$/mi)?.[1]?.trim() || "",
@@ -178,7 +178,7 @@ const textureInfoFromPly = (bytes) => {
   };
 };
 
-const builtIn3ShapeTexture = () => {
+export const builtIn3ShapeTextureBytes = () => {
   // Keep repeated JPEG scan runs out of the already-long literal above.
   const encoded = [
     THREE_SHAPE_PALETTE_JPEG.slice(0, 1130),
@@ -190,8 +190,51 @@ const builtIn3ShapeTexture = () => {
   const binary = atob(encoded);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: "image/jpeg" });
+  return bytes;
 };
+
+const builtIn3ShapeTexture = () => new Blob(
+  [builtIn3ShapeTextureBytes()],
+  { type: "image/jpeg" }
+);
+
+export function classifyPlyHeatmap(bytes, geometry) {
+  const position = geometry?.getAttribute?.("position");
+  const color = geometry?.getAttribute?.("color");
+  if (color?.count && color.count === position?.count) return "legacy-rgb";
+
+  const info = textureInfoFromPly(bytes);
+  const uv = geometry?.getAttribute?.("uv");
+  if (!info.name || !uv || uv.count !== position?.count) return "plain";
+  let oneDimensional = true;
+  for (let index = 0; index < uv.count; index += 1) {
+    if (!Number.isFinite(uv.getX(index))
+      || !Number.isFinite(uv.getY(index))
+      || Math.abs(uv.getX(index)) > 1e-6) {
+      oneDimensional = false;
+      break;
+    }
+  }
+  return info.is3Shape && oneDimensional
+    ? "canonical-3shape"
+    : "noncanonical-textured";
+}
+
+export function canonical3ShapeCompanion(bytes, geometry) {
+  if (classifyPlyHeatmap(bytes, geometry) !== "canonical-3shape") return null;
+  const info = textureInfoFromPly(bytes);
+  return {
+    name: String(info.name).split(/[\\/]/).pop(),
+    bytes: builtIn3ShapeTextureBytes(),
+  };
+}
+
+export async function applyCanonical3ShapeTexture(geometry, bytes) {
+  if (classifyPlyHeatmap(bytes, geometry) !== "canonical-3shape") return false;
+  const image = await imagePixels(builtIn3ShapeTexture());
+  applyTextureToGeometry(geometry, image.pixels, image.width, image.height);
+  return true;
+}
 
 const imagePixels = async (file) => {
   const bitmap = await createImageBitmap(file);
@@ -235,9 +278,21 @@ export async function prepareMeshUpload(files, PLYLoader) {
   const geometry = new PLYLoader().parse(bytes.buffer);
   if (!geometry?.getAttribute) throw new Error("PLY geometry could not be parsed.");
   try {
-    if (geometry.getAttribute("color")) {
-      return { file: meshFile, baked: false, textureMissing: false };
-    }
+    const format = classifyPlyHeatmap(bytes, geometry);
+    if (format === "legacy-rgb") return {
+      file: meshFile,
+      baked: false,
+      textureMissing: false,
+      format,
+      warning: "This legacy PLY already contains baked RGB colours; exact 3Shape round-tripping requires re-uploading the original 3Shape PLY.",
+    };
+    if (format === "canonical-3shape") return {
+      file: meshFile,
+      baked: false,
+      textureMissing: false,
+      format,
+      warning: "",
+    };
 
     const textureInfo = textureInfoFromPly(bytes);
     const texture = textureInfo.is3Shape
@@ -254,6 +309,8 @@ export async function prepareMeshUpload(files, PLYLoader) {
       file: new File([bakedBytes], meshFile.name, { type: "application/octet-stream" }),
       baked: true,
       textureMissing: false,
+      format: "noncanonical-rgb-fallback",
+      warning: "This PLY does not use the canonical 3Shape 1D UV layout. SmartRPD stored an RGB-baked fallback, so exact 3Shape round-tripping is not guaranteed.",
     };
   } finally {
     geometry.dispose?.();

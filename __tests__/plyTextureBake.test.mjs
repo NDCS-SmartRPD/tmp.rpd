@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import {
   applyTextureToGeometry,
+  canonical3ShapeCompanion,
+  classifyPlyHeatmap,
   geometryToBinaryPly,
   prepareMeshUpload,
 } from "../src/viewer3d/plyTextureBake.js";
@@ -78,7 +80,7 @@ describe("applyTextureToGeometry", () => {
     });
   });
 
-  test("bakes the built-in 3Shape palette without a companion JPG", async () => {
+  test("preserves canonical 3Shape PLY bytes and supplies its companion palette", async () => {
     const ply = [
       "ply", "format ascii 1.0", "comment TextureFile scan.jpg", "comment provider 3Shape",
       "element vertex 3", "property float x", "property float y", "property float z",
@@ -111,17 +113,41 @@ describe("applyTextureToGeometry", () => {
           0, 0, 0, 1, 0, 0, 0, 1, 0,
         ], 3));
         geometry.setAttribute("uv", new THREE.Float32BufferAttribute([
-          0, 1, 1, 1, 0, 0,
+          0, 1, 0, 0.5, 0, 0,
         ], 2));
         return geometry;
       }
     }
     const result = await prepareMeshUpload([plyFile], FakePlyLoader);
 
-    expect(result.baked).toBe(true);
-    expect(result.file.name).toBe("scan.ply");
-    const output = new TextDecoder().decode(result.file.parts[0]);
-    expect(output).toContain("property uchar red");
-    expect(output).not.toContain("TextureFile");
+    expect(result).toMatchObject({
+      file: plyFile,
+      baked: false,
+      format: "canonical-3shape",
+      warning: "",
+    });
+    const companion = canonical3ShapeCompanion(bytes, new FakePlyLoader().parse());
+    expect(companion?.name).toBe("scan.jpg");
+    expect(companion?.bytes).toBeInstanceOf(Uint8Array);
+    expect(companion.bytes.subarray(0, 2)).toEqual(new Uint8Array([0xff, 0xd8]));
+  });
+
+  test("requires the provider, texture reference and one-dimensional UV layout", () => {
+    const canonicalHeader = new TextEncoder().encode([
+      "ply", "format ascii 1.0", "comment TextureFile scan.jpg", "comment provider 3Shape",
+      "element vertex 3", "property float x", "property float y", "property float z",
+      "element face 1", "property list uchar int vertex_indices",
+      "property list uchar float texcoord", "end_header", "",
+    ].join("\n"));
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3));
+    geometry.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0.5, 0, 0.25, 0, -1], 2));
+    expect(classifyPlyHeatmap(canonicalHeader, geometry)).toBe("canonical-3shape");
+
+    geometry.setAttribute("uv", new THREE.Float32BufferAttribute([0.1, 0.5, 0, 0.25, 0, -1], 2));
+    expect(classifyPlyHeatmap(canonicalHeader, geometry)).toBe("noncanonical-textured");
+    geometry.deleteAttribute("uv");
+    geometry.setAttribute("color", new THREE.Float32BufferAttribute([1, 0, 0, 1, 0, 0, 1, 0, 0], 3));
+    expect(classifyPlyHeatmap(canonicalHeader, geometry)).toBe("legacy-rgb");
   });
 });

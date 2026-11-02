@@ -26,12 +26,17 @@ import {
   isSupportedMeshFile,
   meshFileKind,
   normalizeJawMeshFile,
+  plyBytesToBinaryStl,
 } from "../../viewer3d/meshFileSupport.js";
 import {
-  geometryToBinaryPly,
+  applyCanonical3ShapeTexture,
+  canonical3ShapeCompanion,
+  classifyPlyHeatmap,
   prepareMeshUpload,
 } from "../../viewer3d/plyTextureBake.js";
-import { heatmapPlyFilename } from "../../viewer3d/surveyHeatmapPly.js";
+import {
+  buildSurveyHeatmapPlyPackage,
+} from "../../viewer3d/surveyHeatmapPly.js";
 
 // Re-exported: sibling 2D modules import it from here.
 export { getLoggedInUser };
@@ -2635,6 +2640,7 @@ export function buildDllUndercutSurface(jaw, response) {
     point_size: response?.surveying_count || values.length,
     source: "dll_compute_surveying_no_pd",
     surveying_direction: response?.surveying_direction,
+    surveying_depths: values instanceof Float32Array ? values : Float32Array.from(values),
     surveying_values: {
       data: Array.from(new Uint8Array(heatmap.buffer)),
     },
@@ -3663,7 +3669,17 @@ async function renderExtraStl({ slotNumber, filename, data }) {
   const loader = kind === "ply" ? new PLYLoader() : new STLLoader();
   const jaw = EXTRA_SLOT_JAW[slotNumber] || null;
   const mode = getExtraJawHeatmapMode(jaw) || "undercut";
-  let geometry = loader.parse(base64ToArrayBuffer(data));
+  const sourceBuffer = base64ToArrayBuffer(data);
+  const sourceBytes = new Uint8Array(sourceBuffer);
+  let geometry = loader.parse(sourceBuffer);
+  const plyFormat = kind === "ply" ? classifyPlyHeatmap(sourceBytes, geometry) : "plain";
+  if (plyFormat === "canonical-3shape") {
+    await applyCanonical3ShapeTexture(geometry, sourceBytes);
+  } else if (plyFormat === "legacy-rgb") {
+    setMessage?.("Legacy RGB PLY loaded. Re-upload the original 3Shape PLY for exact round-tripping.");
+  } else if (plyFormat === "noncanonical-textured") {
+    setMessage?.("Noncanonical textured PLY loaded with the RGB compatibility fallback.");
+  }
   const embeddedColors = kind === "ply" && Boolean(geometry.getAttribute("color"));
   const extraUndercutSurface = jaw && kind === "stl"
     ? await computeExtraJawUndercutSurface(jaw, data, label)
@@ -3870,7 +3886,6 @@ async function uploadExtraStl(files, targetSlot = null) {
     setMessage?.("Select the PLY and its referenced JPG together to include the 3Shape heatmap.");
     return;
   }
-
   // Draw this slot's row as an inline progress bar, then start the upload.
   const controller = new AbortController();
   preview3DState.uploadingSlots.set(freeSlot, {
@@ -3917,6 +3932,7 @@ async function uploadExtraStl(files, targetSlot = null) {
     }
     preview3DState.occupiedSlots.add(freeSlot);
     await renderExtraStl({ slotNumber: freeSlot, filename: file.name, data: base64 });
+    if (prepared?.warning) setMessage?.(prepared.warning);
     // Uploads always come from the open panel, so stage the new file (this is what puts
     // the FIRST extra on screen — opening an all-empty panel doesn't stage anything).
     if (isUpload3dModalOpen()) {
@@ -4761,41 +4777,6 @@ async function downloadJawStlsAsZip() {
   }
 }
 
-function buildJawHeatmapPlyGeometry(jaw, data) {
-  const buffer = base64ToArrayBuffer(data);
-  const payloadInfo = inspectMeshPayload(buffer);
-  const surface = preview3DState.undercut?.[jaw];
-  const heatmapVertexCount = surveyingVertexCount(surface);
-
-  if (payloadInfo.format === "off") {
-    const geometry = parseOFFToGeometry(new TextDecoder().decode(buffer));
-    if (!geometry) throw new Error(`Could not parse the ${jaw} jaw mesh.`);
-    if (heatmapVertexCount > 0) {
-      applyUndercutVertexColors(geometry, surface);
-      snapVertexColorBands(geometry, 2);
-    } else {
-      applyBaseVertexColors(geometry);
-    }
-    return geometry;
-  }
-
-  if (!["binary-stl", "ascii-stl"].includes(payloadInfo.format)) {
-    throw new Error(`Unsupported ${jaw} jaw mesh format.`);
-  }
-
-  const rawGeometry = new STLLoader().parse(buffer);
-  if (heatmapVertexCount > 0) {
-    const result = buildDualDedupGeometry(rawGeometry, surface, heatmapVertexCount);
-    rawGeometry.dispose();
-    return result.geometry;
-  }
-
-  const geometry = mergeStlVertices(rawGeometry);
-  rawGeometry.dispose();
-  applyBaseVertexColors(geometry);
-  return geometry;
-}
-
 async function downloadJawPlysAsZip() {
   if (typeof window.JSZip === "undefined") {
     setMessage("ZIP library failed to load — cannot download PLY files.", true);
@@ -4831,12 +4812,21 @@ async function downloadJawPlysAsZip() {
         `Baking ${jaw} jaw heatmap…`,
         5 + (index / jaws.length) * 45
       );
-      const geometry = buildJawHeatmapPlyGeometry(jaw, data);
-      try {
-        zip.file(heatmapPlyFilename(filename, jaw), geometryToBinaryPly(geometry));
-      } finally {
-        geometry.dispose();
+      const surface = preview3DState.undercut?.[jaw];
+      const depths = surface?.surveying_depths;
+      if (!depths?.length) return;
+      let meshBytes = new Uint8Array(base64ToArrayBuffer(data));
+      if (meshFileKind(filename) === "ply") {
+        meshBytes = new Uint8Array(plyBytesToBinaryStl(meshBytes, PLYLoader));
       }
+      const bundle = buildSurveyHeatmapPlyPackage(
+        meshBytes,
+        { surveying_values: Array.from(depths) },
+        filename,
+        jaw
+      );
+      zip.file(bundle.plyFilename, bundle.ply);
+      zip.file(bundle.textureFilename, bundle.textureBytes);
     });
 
     const blob = await zip.generateAsync({ type: "blob" }, ({ percent }) => {
@@ -4909,10 +4899,20 @@ async function downloadExtraStlsAsZip() {
     }
 
     const zip = new window.JSZip();
-    files.forEach(({ slotNumber, filename, data }) => {
+    for (const { slotNumber, filename, data } of files) {
       const safeName = String(filename || `slot${slotNumber}.stl`).replace(/[\\/]/g, "_");
-      zip.file(`slot_${slotNumber}_${safeName}`, data, { base64: true });
-    });
+      zip.file(`slot_${slotNumber}/${safeName}`, data, { base64: true });
+      if (meshFileKind(filename) === "ply") {
+        const bytes = new Uint8Array(base64ToArrayBuffer(data));
+        const geometry = new PLYLoader().parse(bytes.buffer);
+        try {
+          const companion = canonical3ShapeCompanion(bytes, geometry);
+          if (companion) zip.file(`slot_${slotNumber}/${companion.name}`, companion.bytes);
+        } finally {
+          geometry.dispose?.();
+        }
+      }
+    }
     const blob = await zip.generateAsync({ type: "blob" }, ({ percent }) => {
       updateDownloadProgress(progressToken, "Preparing Extra 3D ZIP…", 35 + percent * 0.65);
     });
