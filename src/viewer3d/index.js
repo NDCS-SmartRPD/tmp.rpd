@@ -5582,7 +5582,9 @@ function removeViewerLoadingScreen() {
       }
       geometry.computeVertexNormals();
       const embeddedColors = Boolean(geometry.getAttribute("color"));
-      slotMaterial.vertexColors = embeddedColors && !FRAMEWORK_SLOTS.has(slot);
+      // The plain material must ignore the geometry's heatmap colours. The undercut
+      // material enables vertexColors when the user turns that mode on.
+      slotMaterial.vertexColors = false;
       mesh = new THREE.Mesh(geometry, slotMaterial);
       meshMaterials = [geometry, geometry, embeddedColors ? geometry : null];
       mesh.userData.embeddedHeatmap = embeddedColors;

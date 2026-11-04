@@ -32,6 +32,7 @@ describe("desktop viewer objects panel interaction", () => {
     expect(slotRenderer).toContain('plyFormat === "canonical-3shape"');
     expect(slotRenderer).toContain("await applyCanonical3ShapeTexture(geometry, sourceBytes)");
     expect(slotRenderer).toContain("mesh.userData.undercutGeometry = geometry");
+    expect(slotRenderer).toContain("slotMaterial.vertexColors = false");
     expect(viewer.match(/await addDesignSlotMesh\(/g)).toHaveLength(2);
   });
 });
