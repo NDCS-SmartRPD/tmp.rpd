@@ -13,7 +13,11 @@ import {
   isSupportedMeshFile,
   meshFileKind,
 } from "./meshFileSupport.js";
-import { prepareMeshUpload } from "./plyTextureBake.js";
+import {
+  applyCanonical3ShapeTexture,
+  classifyPlyHeatmap,
+  prepareMeshUpload,
+} from "./plyTextureBake.js";
 
 // Import the OFFLoader class
 import { OFFLoader } from "./OFFLoader.js";
@@ -5531,7 +5535,7 @@ function removeViewerLoadingScreen() {
 
   // Shared by the initial load and by an upload, which renders the bytes it just
   // sent rather than asking for them back — as preview3D's renderExtraStl does.
-  function addDesignSlotMesh(slot, filename, binaryMesh) {
+  async function addDesignSlotMesh(slot, filename, binaryMesh) {
     // Re-uploading a slot replaces what was there.
     const previous = designSlotMeshes.findIndex(
       (mesh) => mesh.userData?.designSlot === slot
@@ -5569,10 +5573,16 @@ function removeViewerLoadingScreen() {
     let mesh;
     let meshMaterials;
     if (kind === "ply") {
-      const geometry = new PLYLoader().parse(binaryStringToArrayBuffer(binaryMesh));
+      const sourceBuffer = binaryStringToArrayBuffer(binaryMesh);
+      const sourceBytes = new Uint8Array(sourceBuffer);
+      const geometry = new PLYLoader().parse(sourceBuffer);
+      const plyFormat = classifyPlyHeatmap(sourceBytes, geometry);
+      if (plyFormat === "canonical-3shape") {
+        await applyCanonical3ShapeTexture(geometry, sourceBytes);
+      }
       geometry.computeVertexNormals();
       const embeddedColors = Boolean(geometry.getAttribute("color"));
-      slotMaterial.vertexColors = embeddedColors;
+      slotMaterial.vertexColors = embeddedColors && !FRAMEWORK_SLOTS.has(slot);
       mesh = new THREE.Mesh(geometry, slotMaterial);
       meshMaterials = [geometry, geometry, embeddedColors ? geometry : null];
       mesh.userData.embeddedHeatmap = embeddedColors;
@@ -6269,7 +6279,7 @@ function removeViewerLoadingScreen() {
       setSlotTileBusy(slot, "Preparing");
       // Parsing blocks the main thread, so let the tile paint "Preparing…" first.
       await new Promise((resolve) => requestAnimationFrame(resolve));
-      const mesh = addDesignSlotMesh(slot, file.name, atob(base64));
+      const mesh = await addDesignSlotMesh(slot, file.name, atob(base64));
       if (!FRAMEWORK_SLOTS.has(slot)) {
         designSlotPayloads.set(slot, { data: base64, filename: file.name });
         invalidateDesignSlotOcclusion();
@@ -6800,7 +6810,11 @@ function removeViewerLoadingScreen() {
           await new Promise((resolve) => requestAnimationFrame(resolve));
 
           await materialReady;
-          const mesh = addDesignSlotMesh(slot, slotItem.filename, atob(slotItem.data));
+          const mesh = await addDesignSlotMesh(
+            slot,
+            slotItem.filename,
+            atob(slotItem.data)
+          );
           if (!FRAMEWORK_SLOTS.has(slot)) {
             designSlotPayloads.set(slot, {
               data: slotItem.data,
