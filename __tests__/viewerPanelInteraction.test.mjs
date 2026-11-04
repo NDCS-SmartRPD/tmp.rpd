@@ -2,6 +2,7 @@ import fs from "node:fs";
 
 const viewer = fs.readFileSync("src/viewer3d/index.js", "utf8");
 const controls = fs.readFileSync("src/viewer3d/newControls.js", "utf8");
+const viewerPage = fs.readFileSync("src/pages/ThreeDViewer.html", "utf8");
 
 describe("desktop viewer objects panel interaction", () => {
   test("right-drag closes the panel and still reaches the rotation controls", () => {
@@ -34,5 +35,14 @@ describe("desktop viewer objects panel interaction", () => {
     expect(slotRenderer).toContain("mesh.userData.undercutGeometry = geometry");
     expect(slotRenderer).toContain("slotMaterial.vertexColors = false");
     expect(viewer.match(/await addDesignSlotMesh\(/g)).toHaveLength(2);
+  });
+
+  test("downloads original Extra 3D slot files and canonical JPG companions as one ZIP", () => {
+    expect(viewerPage).toContain("vendor/jszip/jszip.min.js");
+    expect(viewer).toContain("canonical3ShapeCompanion");
+    expect(viewer).toContain('zip.file(`slot_${slot}/${safeName}`');
+    expect(viewer).toContain('zip.file(`slot_${slot}/${companion.name}`');
+    expect(viewer).toContain('id = "toolbar-extra-3d-download-button"');
+    expect(controls).toContain('!group.key?.startsWith("design-slot-")');
   });
 });

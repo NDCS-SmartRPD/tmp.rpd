@@ -15,6 +15,7 @@ import {
 } from "./meshFileSupport.js";
 import {
   applyCanonical3ShapeTexture,
+  canonical3ShapeCompanion,
   classifyPlyHeatmap,
   prepareMeshUpload,
 } from "./plyTextureBake.js";
@@ -4417,6 +4418,12 @@ function removeViewerLoadingScreen() {
     height: 30px;
   }
 
+  #viewer-nav-toolbar .smart-btn > i {
+    color: #fff;
+    font-size: 28px;
+    line-height: 1;
+  }
+
   .preset-view-panel {
     position: static;
     order: 10;
@@ -4945,6 +4952,10 @@ function removeViewerLoadingScreen() {
     #viewer-nav-toolbar .smart-btn img {
       width: 36px;
       height: 36px;
+    }
+
+    #viewer-nav-toolbar .smart-btn > i {
+      font-size: 32px;
     }
 
   }
@@ -6282,8 +6293,8 @@ function removeViewerLoadingScreen() {
       // Parsing blocks the main thread, so let the tile paint "Preparing…" first.
       await new Promise((resolve) => requestAnimationFrame(resolve));
       const mesh = await addDesignSlotMesh(slot, file.name, atob(base64));
+      designSlotPayloads.set(slot, { data: base64, filename: file.name });
       if (!FRAMEWORK_SLOTS.has(slot)) {
-        designSlotPayloads.set(slot, { data: base64, filename: file.name });
         invalidateDesignSlotOcclusion();
       }
       // Same as the initial load: survey rides with the mesh, not the button.
@@ -6817,12 +6828,10 @@ function removeViewerLoadingScreen() {
             slotItem.filename,
             atob(slotItem.data)
           );
-          if (!FRAMEWORK_SLOTS.has(slot)) {
-            designSlotPayloads.set(slot, {
-              data: slotItem.data,
-              filename: slotItem.filename || `slot-${slot}.stl`,
-            });
-          }
+          designSlotPayloads.set(slot, {
+            data: slotItem.data,
+            filename: slotItem.filename || `slot-${slot}.stl`,
+          });
           // Fire the undercut survey now, alongside the mesh — not gated behind
           // the undercut button (see ensureSlotUndercutGeometry).
           const surveyPromise = ensureSlotUndercutGeometry(slot, slotItem.data);
@@ -7265,6 +7274,105 @@ function removeViewerLoadingScreen() {
     return target?.clone?.() || null;
   });
   createPresetViewControls();
+
+  async function collectDesignSlotPayloads() {
+    const authPayload = {
+      machine_id: MACHINE_ID,
+      uuid: getLoggedInUser()?.uuid || "",
+      caseIntID: paramValue,
+    };
+    for (let slot = 1; slot <= 4; slot += 1) {
+      if (designSlotPayloads.has(slot)) continue;
+      try {
+        const result = await apiClient.post(
+          "/stl/slot/get",
+          [authPayload, { slotNumber: slot }],
+          false,
+          `Download slot ${slot}`
+        );
+        const item = Array.isArray(result) ? result[0] : result;
+        if (item?.data) {
+          designSlotPayloads.set(slot, {
+            data: item.data,
+            filename: item.filename || `slot-${slot}.stl`,
+          });
+        }
+      } catch (error) {
+        console.warn(`[viewer3D] download slot ${slot} failed`, error);
+      }
+    }
+    return [...designSlotPayloads.entries()].sort(([a], [b]) => a - b);
+  }
+
+  async function downloadExtra3DSlots(button) {
+    if (typeof window.JSZip === "undefined") {
+      window.alert("ZIP library failed to load — cannot download Extra 3D files.");
+      return;
+    }
+    const originalHtml = button.innerHTML;
+    button.disabled = true;
+    button.classList.add("is-busy");
+    button.setAttribute("aria-busy", "true");
+    button.innerHTML = '<i class="fa fa-spinner fa-spin" aria-hidden="true"></i>';
+    button.title = "Collecting Extra 3D files…";
+    try {
+      const files = await collectDesignSlotPayloads();
+      if (!files.length) {
+        window.alert("No Extra 3D files found for this case.");
+        return;
+      }
+      const zip = new window.JSZip();
+      for (const [slot, { data, filename }] of files) {
+        const safeName = String(filename || `slot-${slot}.stl`).replace(/[\\/]/g, "_");
+        zip.file(`slot_${slot}/${safeName}`, data, { base64: true });
+        if (meshFileKind(safeName) !== "ply") continue;
+
+        const sourceBytes = new Uint8Array(binaryStringToArrayBuffer(atob(data)));
+        const geometry = new PLYLoader().parse(sourceBytes.buffer);
+        try {
+          const companion = canonical3ShapeCompanion(sourceBytes, geometry);
+          if (companion) {
+            zip.file(`slot_${slot}/${companion.name}`, companion.bytes);
+          }
+        } finally {
+          geometry.dispose?.();
+        }
+      }
+      const blob = await zip.generateAsync({ type: "blob" }, ({ percent }) => {
+        button.title = `Preparing Extra 3D ZIP… ${Math.round(percent)}%`;
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `case_${paramValue || "unknown"}_extra_3d.zip`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("[viewer3D] Extra 3D ZIP download failed", error);
+      window.alert("Failed to download Extra 3D files.");
+    } finally {
+      button.disabled = false;
+      button.classList.remove("is-busy");
+      button.removeAttribute("aria-busy");
+      button.innerHTML = originalHtml;
+      button.title = "Download Extra 3D files";
+    }
+  }
+
+  const extra3DDownloadButton = document.createElement("button");
+  extra3DDownloadButton.type = "button";
+  extra3DDownloadButton.id = "toolbar-extra-3d-download-button";
+  extra3DDownloadButton.className = "smart-btn";
+  extra3DDownloadButton.style.order = "25";
+  extra3DDownloadButton.title = "Download Extra 3D files";
+  extra3DDownloadButton.setAttribute("aria-label", "Download Extra 3D files as ZIP");
+  extra3DDownloadButton.innerHTML = '<i class="fa fa-file-arrow-down" aria-hidden="true"></i>';
+  extra3DDownloadButton.addEventListener("click", () => {
+    downloadExtra3DSlots(extra3DDownloadButton);
+  });
+  getViewerNavToolbar().appendChild(extra3DDownloadButton);
 
   // Yellow "Objects" toggle, back in the black toolbar alongside reset — a
   // second, always-on-screen path to the same Show/Hide panel the persistent

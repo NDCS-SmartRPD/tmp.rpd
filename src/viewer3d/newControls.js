@@ -1148,7 +1148,7 @@ function createComponentPanel(groups) {
     if (occlusionButton) buttonsRow.appendChild(occlusionButton);
 
     let plyButton = null;
-    if (group.meshes?.length) {
+    if (group.meshes?.length && !group.key?.startsWith("design-slot-")) {
       plyButton = document.createElement("button");
       plyButton.type = "button";
       plyButton.className = "component-ply-button";
