@@ -1,6 +1,6 @@
 import { lol } from "../shared/crypt.js";
 import { getAppBasePath } from "../shared/pageContext.js";
-import { buildThreeDViewerUrl } from "../shared/caseLinks.js";
+import { buildThreeDViewerUrl, createSharedThreeDViewerUrl } from "../shared/caseLinks.js";
 import { toast, confirmModal, openThemedCalendar, attachThemedCalendar } from "../shared/toast.js";
 import { openSelectMenu, closeSelectMenu, isSelectMenuOpenFor } from "../shared/selectMenu.js";
 import { logApi, statusLabel, STATUS_LABELS } from "../shared/apiLog.js";
@@ -43,6 +43,18 @@ import { recordCollaborators, reconcileCollaborators } from "../shared/userSugge
 import { confirmRemoveUserFromCase } from "../shared/caseRoles.js";
 import { createCaseHistory } from "../shared/caseHistory.js";
 import { caseListFilterText, matchesCaseListFilter, parseCaseListFilter } from "../shared/caseListFilter.js";
+import {
+  buildSurveyHeatmapPlyPackage,
+  savedSurveyDirection,
+} from "../../viewer3d/surveyHeatmapPly.js";
+import {
+  canonical3ShapeCompanion,
+  classifyPlyHeatmap,
+} from "../../viewer3d/plyTextureBake.js";
+import {
+  isPlyBytes,
+  plyBytesToBinaryStl,
+} from "../../viewer3d/meshFileSupport.js";
 
 // Per-user cache of the last case list, painted instantly while
 // /case/user/findall/get is in flight. Keyed by uuid so lists never cross accounts.
@@ -592,6 +604,74 @@ async function fetchCaseStls(caseIntId, uuid) {
   return [];
 }
 
+function jawKeyFromMeshFile(file) {
+  const raw = file?.type ?? file?.jaw_type;
+  if (raw === 1 || raw === "1") return "upper";
+  if (raw === 2 || raw === "2") return "lower";
+  const hint = `${raw || ""} ${file?.filename || ""}`.toLowerCase();
+  if (hint.includes("upper")) return "upper";
+  if (hint.includes("lower")) return "lower";
+  return null;
+}
+
+async function surveyHeatmapSourceBytes(data) {
+  const bytes = base64ToBytes(data);
+  if (!isPlyBytes(bytes)) return bytes;
+  const { PLYLoader } = await import(
+    /* webpackMode: "eager" */ "three/addons/loaders/PLYLoader.js"
+  );
+  return new Uint8Array(plyBytesToBinaryStl(bytes, PLYLoader));
+}
+
+async function collectSurveyHeatmapPlyFiles(caseIntId, user, files) {
+  if (!files.length) return [];
+  const caseRow = await fetchCaseRow(caseIntId, user);
+  if (!caseRow) return [];
+
+  const meshes = new Map();
+  files.forEach((file) => {
+    const jaw = jawKeyFromMeshFile(file);
+    if (jaw && !meshes.has(jaw)) meshes.set(jaw, file);
+  });
+
+  const output = [];
+  for (const [jaw, file] of meshes) {
+    const direction = savedSurveyDirection(caseRow, jaw);
+    if (!direction) continue;
+    try {
+      const res = await fetch(`${API_BASE}/dll/compute-surveying-no-pd`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify([
+          { machine_id: MACHINE_ID, uuid: user.uuid, caseIntID: caseIntId },
+          {
+            case_id: caseIntId,
+            type: jaw === "upper" ? 1 : 2,
+            dir: direction,
+            printFullSurveying: true,
+            returnSurveyingBase64: true,
+          },
+        ]),
+      });
+      logApi(res, `POST /dll/compute-surveying-no-pd (${jaw})`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const meshBytes = await surveyHeatmapSourceBytes(file.data);
+      output.push({
+        jaw,
+        ...buildSurveyHeatmapPlyPackage(
+          meshBytes,
+          await res.json(),
+          file.filename,
+          jaw
+        ),
+      });
+    } catch (err) {
+      console.warn(`[case/download] ${jaw} survey heatmap PLY failed`, err);
+    }
+  }
+  return output;
+}
+
 // The four extra 3D slots (POST /stl/slot/), which /stl/get doesn't return. One
 // at a time and decoded as they arrive — an occupied slot returns tens of MB.
 async function fetchExtraStlSlots(caseIntId, uuid) {
@@ -773,8 +853,62 @@ async function fetchCase2dJpegBytes(caseIntId, uuid) {
   }
 }
 
-// Bundles STLs, extra 3D uploads, the 2D JPEG, reference images and the .docx
-// report into one zip. Each part is best-effort; only an empty result aborts.
+let activeCaseDownloadProgress = null;
+let caseDownloadProgressTimer = null;
+
+function ensureCaseDownloadProgress() {
+  let progress = document.getElementById("caseDownloadProgress");
+  if (progress) return progress;
+  progress = document.createElement("div");
+  progress.id = "caseDownloadProgress";
+  progress.className = "cm-download-progress is-hidden is-indeterminate";
+  progress.setAttribute("role", "status");
+  progress.setAttribute("aria-live", "polite");
+  progress.innerHTML =
+    '<div class="cm-download-progress-copy">Preparing case ZIP…</div>' +
+    '<div class="cm-download-progress-track" role="progressbar" aria-label="Case download packaging progress">' +
+      '<div class="cm-download-progress-fill"></div>' +
+    '</div>';
+  document.body.appendChild(progress);
+  return progress;
+}
+
+function beginCaseDownloadProgress(label) {
+  const token = Symbol("case-download-progress");
+  activeCaseDownloadProgress = token;
+  clearTimeout(caseDownloadProgressTimer);
+  const progress = ensureCaseDownloadProgress();
+  progress.querySelector(".cm-download-progress-copy").textContent = label;
+  progress.querySelector(".cm-download-progress-track").removeAttribute("aria-valuenow");
+  progress.classList.remove("is-hidden", "is-error");
+  progress.classList.add("is-indeterminate");
+  return token;
+}
+
+function updateCaseDownloadProgress(token, label, percent) {
+  if (token !== activeCaseDownloadProgress) return;
+  const progress = ensureCaseDownloadProgress();
+  const value = Math.max(0, Math.min(100, Math.round(percent)));
+  progress.querySelector(".cm-download-progress-copy").textContent = label;
+  progress.querySelector(".cm-download-progress-track").setAttribute("aria-valuenow", String(value));
+  progress.querySelector(".cm-download-progress-fill").style.width = `${value}%`;
+  progress.classList.remove("is-indeterminate");
+}
+
+function finishCaseDownloadProgress(token, label, isError = false) {
+  if (token !== activeCaseDownloadProgress) return;
+  updateCaseDownloadProgress(token, label, 100);
+  const progress = ensureCaseDownloadProgress();
+  progress.classList.toggle("is-error", isError);
+  caseDownloadProgressTimer = setTimeout(() => {
+    if (token !== activeCaseDownloadProgress) return;
+    progress.classList.add("is-hidden");
+    activeCaseDownloadProgress = null;
+  }, isError ? 3500 : 1800);
+}
+
+// Bundles jaw meshes (including surveyed PLY copies), extra 3D uploads, the 2D
+// JPEG, reference images and the .docx report. Each part is best-effort.
 async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
   const user = getLoggedInUser();
   if (!user?.uuid || caseIntId == null) {
@@ -787,11 +921,12 @@ async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
   }
 
   toast.info("Preparing download…");
+  const progressToken = beginCaseDownloadProgress("Collecting jaw files…");
   const base = String(caseLabel || `case_${caseIntId}`).replace(/[^a-z0-9_\-]+/gi, "_");
   const zip = new window.JSZip();
   let added = 0;
 
-  // 1) STL files.
+  // 1) Original jaw meshes plus surveyed PLY copies when saved angles exist.
   try {
     const files = await fetchCaseStls(caseIntId, user.uuid);
     const usedNames = new Set();
@@ -829,29 +964,59 @@ async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
         console.error("❌ Failed to add STL to zip:", name, err);
       }
     });
+    const heatmaps = await collectSurveyHeatmapPlyFiles(caseIntId, user, files);
+    heatmaps.forEach(({ plyFilename, textureFilename, ply, textureBytes }) => {
+      // Keep each canonical PLY and its referenced palette JPG together at the ZIP root.
+      // For a saved jaw already using the same PLY name, JSZip replaces that entry.
+      zip.file(plyFilename, ply);
+      zip.file(textureFilename, textureBytes);
+      added += 2;
+    });
   } catch (err) {
     console.warn("[case/download] STL bundling failed", err);
   }
+  updateCaseDownloadProgress(progressToken, "Collecting Extra 3D files…", 32);
 
-  // 2) Extra 3D files, in their own folder so an uploaded name can't collide
-  //     with a jaw mesh at the zip root.
+  // 2) Extra 3D sources grouped by slot. Canonical 3Shape PLYs receive the exact
+  //    palette JPG named by their TextureFile comment.
   try {
     const extras = await fetchExtraStlSlots(caseIntId, user.uuid);
-    const usedExtraNames = new Set();
     extras.forEach(({ slotNumber, filename, bytes }) => {
       let cleaned = String(filename || "").trim().replace(/[\\/:*?"<>|]+/g, "_");
       // Stored names are upload names, but an extension-less one won't open.
       if (cleaned && !/\.[a-z0-9]{2,5}$/i.test(cleaned)) cleaned += ".stl";
-      const name = uniqueDownloadName(
-        cleaned || `${base}_extra_${slotNumber}.stl`,
-        usedExtraNames
-      );
-      zip.file(`extra_3d/${name}`, bytes);
+      const name = cleaned || `${base}_extra_${slotNumber}.stl`;
+      zip.file(`slot_${slotNumber}/${name}`, bytes);
       added += 1;
     });
+    const { PLYLoader } = await import(
+      /* webpackMode: "eager" */ "three/addons/loaders/PLYLoader.js"
+    );
+    for (const { slotNumber, filename, bytes } of extras) {
+      if (!isPlyBytes(bytes)) continue;
+      const geometry = new PLYLoader().parse(bytes.buffer.slice(
+        bytes.byteOffset,
+        bytes.byteOffset + bytes.byteLength
+      ));
+      try {
+        const format = classifyPlyHeatmap(bytes, geometry);
+        const companion = canonical3ShapeCompanion(bytes, geometry);
+        if (companion) {
+          zip.file(`slot_${slotNumber}/${companion.name}`, companion.bytes);
+          added += 1;
+        } else if (format === "legacy-rgb") {
+          toast.warning(`${filename || `Slot ${slotNumber}`} is a legacy RGB PLY; exact 3Shape round-tripping requires the original PLY.`);
+        } else if (format === "noncanonical-textured") {
+          toast.warning(`${filename || `Slot ${slotNumber}`} uses a noncanonical PLY texture layout; the stored RGB fallback was retained.`);
+        }
+      } finally {
+        geometry.dispose?.();
+      }
+    }
   } catch (err) {
     console.warn("[case/download] extra 3D files failed", err);
   }
+  updateCaseDownloadProgress(progressToken, "Preparing 2D design image…", 52);
 
   // 3) 2D design JPEG (thumbnail slot 0).
   try {
@@ -863,6 +1028,7 @@ async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
   } catch (err) {
     console.warn("[case/download] 2D JPEG failed", err);
   }
+  updateCaseDownloadProgress(progressToken, "Collecting reference images…", 64);
 
   // 4) Reference images, kept in their own folder so they don't collide with
   //     the STL/report names at the zip root.
@@ -875,6 +1041,7 @@ async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
   } catch (err) {
     console.warn("[case/download] reference images failed", err);
   }
+  updateCaseDownloadProgress(progressToken, "Preparing case report…", 76);
 
   // 5) Design report as a Word .docx.
   try {
@@ -888,16 +1055,21 @@ async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
 
   if (!added) {
     toast.info("No files available to download for this case.");
+    finishCaseDownloadProgress(progressToken, "No files available", true);
     return;
   }
 
   try {
-    const blob = await zip.generateAsync({ type: "uint8array" });
+    const blob = await zip.generateAsync({ type: "uint8array" }, ({ percent }) => {
+      updateCaseDownloadProgress(progressToken, "Packaging case ZIP…", 85 + percent * 0.15);
+    });
     triggerBlobDownload(blob, `${base}.zip`);
     toast.success("Download ready.");
+    finishCaseDownloadProgress(progressToken, "Case ZIP downloaded");
   } catch (err) {
     console.error("❌ Failed to generate zip:", err);
     toast.error(`Failed to generate zip: ${err.message || err}`);
+    finishCaseDownloadProgress(progressToken, "Case ZIP download failed", true);
   }
 }
 
@@ -2971,13 +3143,19 @@ if (filterSel) filterSel.addEventListener("change", () => applyClientFilters());
   // Generate a QR code of the selected case's 3D viewer link.
   const generateQrBtn = document.getElementById("generateQrBtn");
   if (generateQrBtn) {
-    generateQrBtn.addEventListener("click", () => {
-      const url3d = buildThreeDViewerUrl(window.selectedCaseId, { forShare: true });
-      if (!url3d) {
+    generateQrBtn.addEventListener("click", async () => {
+      const caseId = window.selectedCaseId;
+      if (!caseId) {
         toast.warning("Please select a case first.");
         return;
       }
-      showThreeDViewerQr(url3d);
+      try {
+        const url3d = await createSharedThreeDViewerUrl(caseId);
+        showThreeDViewerQr(url3d);
+      } catch (err) {
+        console.warn("Failed to create 3D viewer QR link", err);
+        toast.error("Couldn't create the viewer link.");
+      }
     });
   }
 
@@ -2985,12 +3163,13 @@ if (filterSel) filterSel.addEventListener("change", () => applyClientFilters());
   const copy3dLinkBtn = document.getElementById("copy3dLinkBtn");
   if (copy3dLinkBtn) {
     copy3dLinkBtn.addEventListener("click", async () => {
-      const url3d = buildThreeDViewerUrl(window.selectedCaseId, { forShare: true });
-      if (!url3d) {
+      const caseId = window.selectedCaseId;
+      if (!caseId) {
         toast.warning("Please select a case first.");
         return;
       }
       try {
+        const url3d = await createSharedThreeDViewerUrl(caseId);
         await navigator.clipboard.writeText(url3d);
         toast.success("3D viewer link copied.");
       } catch (err) {

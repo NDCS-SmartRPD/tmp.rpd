@@ -1,11 +1,15 @@
 /** @jest-environment jsdom */
 import { getAppBasePath } from "../src/js/shared/pageContext.js";
-import { buildThreeDViewerUrl } from "../src/js/shared/caseLinks.js";
+import { buildThreeDViewerUrl, createSharedThreeDViewerUrl } from "../src/js/shared/caseLinks.js";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
 const originalLocation = window.location;
 afterAll(() => Object.defineProperty(window, "location", { configurable: true, value: originalLocation }));
+afterEach(() => {
+  localStorage.clear();
+  jest.restoreAllMocks();
+});
 
 test.each([
   ["https://ndcs-smartrpd.github.io/tmp.rpd/src/pages/ThreeDViewer.html?id=case", "/tmp.rpd"],
@@ -23,6 +27,24 @@ test.each([
 test("localhost share links use the new live repository", () => {
   Object.defineProperty(window, "location", { configurable: true, value: new URL("http://localhost:8089/src/pages/case_list.html") });
   expect(buildThreeDViewerUrl("123", { forShare: true })).toContain("https://ndcs-smartrpd.github.io/tmp.rpd/src/pages/ThreeDViewer.html?id=");
+});
+
+test("server-issued share tokens are placed in the URL fragment", async () => {
+  Object.defineProperty(window, "location", { configurable: true, value: new URL("http://localhost:8089/src/pages/case_list.html") });
+  localStorage.setItem("loggedInUser", JSON.stringify({ uuid: "owner-uuid" }));
+  global.fetch = jest.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ token: "safe_token", expiresAt: "2099-01-01T00:00:00Z" }),
+  });
+
+  const link = await createSharedThreeDViewerUrl("123");
+
+  expect(link).toContain("/ThreeDViewer.html?id=");
+  expect(link.endsWith("#share=safe_token")).toBe(true);
+  expect(global.fetch).toHaveBeenCalledWith(
+    expect.stringContaining("/case/share/replace"),
+    expect.objectContaining({ method: "POST" })
+  );
 });
 
 test.each(["ThreeDViewer", "VersionHistory", "AnnotationHistory"])("%s bootstrap loads assets inside the deployed repository", (page) => {

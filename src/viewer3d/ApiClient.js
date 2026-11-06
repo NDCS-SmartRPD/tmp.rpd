@@ -1,13 +1,20 @@
 import { logApi } from "../js/shared/apiLog.js";
-import { LOGIN_CREDENTIALS, MACHINE_ID, VIEWER_UUID } from "../js/shared/config.js";
-import { API_BASE } from "../js/shared/api.js";
+import { readShareToken, clearShareToken } from "../js/shared/shareSession.js";
+import { getLoggedInUser } from "../js/shared/api.js";
 export class ApiClient {
   constructor(baseUrl) {
     this.baseUrl = baseUrl;
   }
 
   async ensureSession() {
-    await getSessionLogin();
+    return true;
+  }
+
+  authHeaders() {
+    const shareToken = readShareToken();
+    if (shareToken) return { Authorization: `Bearer ${shareToken}` };
+    if (getLoggedInUser()?.uuid) return {};
+    return { Authorization: 'Legacy 1' };
   }
 
   async post(endpoint, data, test,what) {
@@ -19,32 +26,24 @@ export class ApiClient {
       that = '';
     }
     const downloadLabel = what === undefined ? '' : `Downloading: ${what} | `;
-    await getSessionLogin();
 
     const send = () => fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...this.authHeaders(),
       },
       body: JSON.stringify(data)
     });
 
-    let response = await send();
-
-    // The session is server-side on ONE shared account, so any other tab logging
-    // out 401s every later call here. Re-login once and retry.
-    if (response.status === 401) {
-      console.warn(`[ApiClient] session expired on POST ${endpoint} — re-logging in`);
-      resetSessionLogin();
-      await getSessionLogin();
-      response = await send();
-    }
+    const response = await send();
 
     logApi(response, `POST ${endpoint}`);
     if (!response.ok) {
       if (response.status == 500 || response.status == 404) {
         return 'stl';
       }
+      if (response.status === 401) clearShareToken();
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
@@ -125,51 +124,3 @@ export class ApiClient {
     return jsonResponse;
   }
 }
-
-let sessionLoginPromise = null;
-
-// Drop the memoized session so the next call logs in again.
-function resetSessionLogin() {
-  sessionLoginPromise = null;
-}
-
-function getSessionLogin() {
-  if (!sessionLoginPromise) {
-    sessionLoginPromise = login().catch((error) => {
-      sessionLoginPromise = null;
-      throw error;
-    });
-  }
-  return sessionLoginPromise;
-}
-
-
-async function login() {
-  const loginData = LOGIN_CREDENTIALS;
-  const dataish = {
-    machine_id: MACHINE_ID,
-    uuid: VIEWER_UUID,
-  };
-
-  const urllogin = `${API_BASE}/user/login`;
-  try {
-    const response = await fetch(urllogin, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify([dataish,loginData])
-    });
-    logApi(response, 'POST /user/login');
-    if (!response.ok) {
-      throw new Error(`Login failed with status: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Error:', error);
-    throw error; // Rethrow the error to handle it in the caller function
-  }
-}
-// 

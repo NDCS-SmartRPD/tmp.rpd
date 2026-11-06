@@ -2018,6 +2018,63 @@ button {
   .cm-shared-name { max-width: 110px; }
 }
 
+/* Non-modal case ZIP packaging feedback; stays clear of controls and safe areas. */
+.cm-download-progress {
+  position: fixed;
+  left: 50%;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  z-index: 10020;
+  width: min(360px, calc(100vw - 24px));
+  padding: 10px 12px;
+  border: 1px solid var(--line, #d2d7df);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+  color: var(--ink, #2b3440);
+  pointer-events: none;
+  transform: translate(-50%, 0);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.cm-download-progress.is-hidden {
+  opacity: 0;
+  transform: translate(-50%, 8px);
+}
+.cm-download-progress-copy {
+  margin-bottom: 7px;
+  overflow: hidden;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cm-download-progress-track {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dfe5e9;
+}
+.cm-download-progress-fill {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary, #3bae95);
+  transition: width 0.15s ease;
+}
+.cm-download-progress.is-indeterminate .cm-download-progress-fill {
+  width: 35%;
+  animation: cm-download-progress-slide 1.1s ease-in-out infinite;
+}
+.cm-download-progress.is-error .cm-download-progress-fill { background: #c2413b; }
+@keyframes cm-download-progress-slide {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(330%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cm-download-progress,
+  .cm-download-progress-fill { transition: none; }
+  .cm-download-progress.is-indeterminate .cm-download-progress-fill { animation: none; }
+}
+
 /* Extra-narrow phones (≤360, iPhone SE etc.) — the 2-col toolbar grid gets
    too cramped for the native date input; fall back to a single column. */
 @media (max-width: 360px) {

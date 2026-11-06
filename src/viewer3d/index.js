@@ -13,6 +13,12 @@ import {
   isSupportedMeshFile,
   meshFileKind,
 } from "./meshFileSupport.js";
+import {
+  applyCanonical3ShapeTexture,
+  canonical3ShapeCompanion,
+  classifyPlyHeatmap,
+  prepareMeshUpload,
+} from "./plyTextureBake.js";
 
 // Import the OFFLoader class
 import { OFFLoader } from "./OFFLoader.js";
@@ -27,7 +33,7 @@ import {
   removeVisibilityAndTransparencyControls,
 } from "./newControls.js";
 import { createArtificialTeethRenderer } from "./artificialTeeth.js";
-import { API_BASE, MACHINE_ID } from "../js/shared/api.js";
+import { API_BASE, MACHINE_ID, getLoggedInUser } from "../js/shared/api.js";
 import { decodeJawStructResponse, decodedJawMaterial } from "../js/2D/jawStructCodec.js";
 import { FULL_ACRYLIC_MATERIAL } from "../js/2D/JawDesignProposal.js";
 import { occlusionColorArray } from "./vertexColors.js";
@@ -60,6 +66,7 @@ if (LOG_VIEWER_REVISION_TO_CONSOLE) {
 let all_mesh_mat = {};
 window.finished = false;
 const viewerContainer = document.getElementById("container3D");
+const isReadOnlyViewer = !getLoggedInUser()?.uuid;
 
 // Get the current URL
 const url = new URL(window.location.href);
@@ -785,6 +792,9 @@ function bindViewerRotationTargetAnchor(domElement) {
       return;
     }
 
+    // Dismiss the default-open objects panel without consuming this event;
+    // TrackballControls must receive the same right-button press to rotate.
+    window.viewerPanelManager?.close("objects-panel");
   }, true);
 
   const releasePointer = (event) => {
@@ -830,6 +840,9 @@ function bindViewerRotationTargetAnchor(domElement) {
   }, true);
   domElement.addEventListener("contextmenu", (event) => {
     event.preventDefault();
+  });
+  domElement.addEventListener("click", () => {
+    window.viewerPanelManager?.close("objects-panel");
   });
   window.addEventListener("blur", () => {
     activeTouchPointers.clear();
@@ -2891,7 +2904,7 @@ async function fetchAndRenderPolylines(caseIntID) {
       machine_id: MACHINE_ID,
       // Fallback UUID keeps direct/shared viewer URLs able to load case assets.
       // Prefer loggedInUser.uuid if this viewer is later wired to authenticated sessions.
-      uuid: "AC4gRQXZJoNz9EhhW36Q8jMJXBsf",
+      uuid: getLoggedInUser()?.uuid || "",
       caseIntID,
     },
     {
@@ -3325,7 +3338,7 @@ function removeViewerLoadingScreen() {
     machine_id: MACHINE_ID,
     // Fallback UUID keeps direct/shared viewer URLs able to load case assets.
     // Prefer loggedInUser.uuid if this viewer is later wired to authenticated sessions.
-    uuid: "AC4gRQXZJoNz9EhhW36Q8jMJXBsf",
+    uuid: getLoggedInUser()?.uuid || "",
     //uuid: 'eOqJe2FpjqdECy25l0KuJkH2cPQm', // dev server acc uuid
     case_int_id: paramValue,
     jaw_type: 2,
@@ -3752,7 +3765,7 @@ function removeViewerLoadingScreen() {
       [
         {
           machine_id: MACHINE_ID,
-          uuid: "AC4gRQXZJoNz9EhhW36Q8jMJXBsf",
+          uuid: getLoggedInUser()?.uuid || "",
           caseIntID: paramValue,
         },
         {
@@ -3787,7 +3800,7 @@ function removeViewerLoadingScreen() {
       [
         {
           machine_id: MACHINE_ID,
-          uuid: "AC4gRQXZJoNz9EhhW36Q8jMJXBsf",
+          uuid: getLoggedInUser()?.uuid || "",
           caseIntID: paramValue,
         },
         {
@@ -3945,7 +3958,7 @@ function removeViewerLoadingScreen() {
             }
             window.showDesignUploadPrompt?.();
           });
-          btnContainer3D.appendChild(uploadSlotsButton);
+          if (!isReadOnlyViewer) btnContainer3D.appendChild(uploadSlotsButton);
 
           // Append the container to the body
           if (btnContainer.children.length > 0) {
@@ -4403,6 +4416,12 @@ function removeViewerLoadingScreen() {
   #viewer-nav-toolbar .smart-btn img {
     width: 30px;
     height: 30px;
+  }
+
+  #viewer-nav-toolbar .smart-btn > i {
+    color: #fff;
+    font-size: 28px;
+    line-height: 1;
   }
 
   .preset-view-panel {
@@ -4933,6 +4952,10 @@ function removeViewerLoadingScreen() {
     #viewer-nav-toolbar .smart-btn img {
       width: 36px;
       height: 36px;
+    }
+
+    #viewer-nav-toolbar .smart-btn > i {
+      font-size: 32px;
     }
 
   }
@@ -5493,7 +5516,7 @@ function removeViewerLoadingScreen() {
         [
           {
             machine_id: MACHINE_ID,
-            uuid: "AC4gRQXZJoNz9EhhW36Q8jMJXBsf",
+            uuid: getLoggedInUser()?.uuid || "",
             caseIntID: paramValue,
           },
           { case_id: paramValue },
@@ -5523,7 +5546,7 @@ function removeViewerLoadingScreen() {
 
   // Shared by the initial load and by an upload, which renders the bytes it just
   // sent rather than asking for them back — as preview3D's renderExtraStl does.
-  function addDesignSlotMesh(slot, filename, binaryMesh) {
+  async function addDesignSlotMesh(slot, filename, binaryMesh) {
     // Re-uploading a slot replaces what was there.
     const previous = designSlotMeshes.findIndex(
       (mesh) => mesh.userData?.designSlot === slot
@@ -5561,10 +5584,18 @@ function removeViewerLoadingScreen() {
     let mesh;
     let meshMaterials;
     if (kind === "ply") {
-      const geometry = new PLYLoader().parse(binaryStringToArrayBuffer(binaryMesh));
+      const sourceBuffer = binaryStringToArrayBuffer(binaryMesh);
+      const sourceBytes = new Uint8Array(sourceBuffer);
+      const geometry = new PLYLoader().parse(sourceBuffer);
+      const plyFormat = classifyPlyHeatmap(sourceBytes, geometry);
+      if (plyFormat === "canonical-3shape") {
+        await applyCanonical3ShapeTexture(geometry, sourceBytes);
+      }
       geometry.computeVertexNormals();
       const embeddedColors = Boolean(geometry.getAttribute("color"));
-      slotMaterial.vertexColors = embeddedColors;
+      // The plain material must ignore the geometry's heatmap colours. The undercut
+      // material enables vertexColors when the user turns that mode on.
+      slotMaterial.vertexColors = false;
       mesh = new THREE.Mesh(geometry, slotMaterial);
       meshMaterials = [geometry, geometry, embeddedColors ? geometry : null];
       mesh.userData.embeddedHeatmap = embeddedColors;
@@ -5738,7 +5769,7 @@ function removeViewerLoadingScreen() {
 
     const authPayload = {
       machine_id: MACHINE_ID,
-      uuid: "AC4gRQXZJoNz9EhhW36Q8jMJXBsf",
+      uuid: getLoggedInUser()?.uuid || "",
       caseIntID: paramValue,
     };
 
@@ -6213,23 +6244,34 @@ function removeViewerLoadingScreen() {
 
   // Validates, uploads and renders one File into one slot. Shared by the file
   // picker and drag-and-drop, which each just hand it a File.
-  async function uploadFileToSlot(file, slot, statusEl) {
-    if (!file) return;
-    if (!isSupportedMeshFile(file.name)) {
+  async function uploadFileToSlot(files, slot, statusEl) {
+    const selection = (Array.isArray(files) ? files : [files]).filter(Boolean);
+    const selectedMesh = selection.find((entry) => isSupportedMeshFile(entry?.name));
+    if (!selectedMesh) {
       statusEl.textContent = "Only .stl and .ply files are supported.";
       return;
     }
 
-    statusEl.textContent = `Uploading ${file.name}…`;
+    statusEl.textContent = `Preparing ${selectedMesh.name}…`;
     setUploadPromptBusy(true);
     setSlotTileBusy(slot, "Reading file");
     try {
+      const prepared = await prepareMeshUpload(selection, PLYLoader);
+      const file = prepared?.file;
+      if (!file) {
+        statusEl.textContent = "No supported 3D file was selected.";
+        return;
+      }
+      if (prepared?.textureMissing) {
+        statusEl.textContent = "Select the PLY and its referenced JPG together.";
+        return;
+      }
       const base64 = await fileToBase64(file);
       await uploadSlotStl(
         JSON.stringify([
           {
             machine_id: MACHINE_ID,
-            uuid: "AC4gRQXZJoNz9EhhW36Q8jMJXBsf",
+            uuid: getLoggedInUser()?.uuid || "",
             caseIntID: paramValue,
           },
           // case_id belongs in THIS object, not the auth one (same as POST /stl):
@@ -6250,9 +6292,9 @@ function removeViewerLoadingScreen() {
       setSlotTileBusy(slot, "Preparing");
       // Parsing blocks the main thread, so let the tile paint "Preparing…" first.
       await new Promise((resolve) => requestAnimationFrame(resolve));
-      const mesh = addDesignSlotMesh(slot, file.name, atob(base64));
+      const mesh = await addDesignSlotMesh(slot, file.name, atob(base64));
+      designSlotPayloads.set(slot, { data: base64, filename: file.name });
       if (!FRAMEWORK_SLOTS.has(slot)) {
-        designSlotPayloads.set(slot, { data: base64, filename: file.name });
         invalidateDesignSlotOcclusion();
       }
       // Same as the initial load: survey rides with the mesh, not the button.
@@ -6307,8 +6349,8 @@ function removeViewerLoadingScreen() {
         statusEl.textContent = "Delete the existing file before replacing it.";
         return;
       }
-      const file = event.dataTransfer.files?.[0];
-      if (file) uploadFileToSlot(file, slot, statusEl);
+      const files = Array.from(event.dataTransfer.files || []);
+      if (files.length) uploadFileToSlot(files, slot, statusEl);
     });
   }
 
@@ -6435,7 +6477,7 @@ function removeViewerLoadingScreen() {
     if (sub) {
       sub.textContent = anyUploaded
         ? "Add another file to an empty slot, or close this to view the design."
-        : "Add an STL to a slot, or open the 3D scan.";
+        : "Add an STL or PLY to a slot, or open the 3D scan.";
     }
     const closeBtn = prompt.querySelector(".dup-open-scan");
     if (closeBtn) {
@@ -6477,7 +6519,7 @@ function removeViewerLoadingScreen() {
         body: JSON.stringify([
           {
             machine_id: MACHINE_ID,
-            uuid: "AC4gRQXZJoNz9EhhW36Q8jMJXBsf",
+            uuid: getLoggedInUser()?.uuid || "",
             caseIntID: paramValue,
           },
           { case_id: paramValue, slotNumber: slot },
@@ -6696,7 +6738,7 @@ function removeViewerLoadingScreen() {
 
     const authPayload = {
       machine_id: MACHINE_ID,
-      uuid: "AC4gRQXZJoNz9EhhW36Q8jMJXBsf",
+      uuid: getLoggedInUser()?.uuid || "",
       caseIntID: paramValue,
     };
 
@@ -6781,13 +6823,15 @@ function removeViewerLoadingScreen() {
           await new Promise((resolve) => requestAnimationFrame(resolve));
 
           await materialReady;
-          const mesh = addDesignSlotMesh(slot, slotItem.filename, atob(slotItem.data));
-          if (!FRAMEWORK_SLOTS.has(slot)) {
-            designSlotPayloads.set(slot, {
-              data: slotItem.data,
-              filename: slotItem.filename || `slot-${slot}.stl`,
-            });
-          }
+          const mesh = await addDesignSlotMesh(
+            slot,
+            slotItem.filename,
+            atob(slotItem.data)
+          );
+          designSlotPayloads.set(slot, {
+            data: slotItem.data,
+            filename: slotItem.filename || `slot-${slot}.stl`,
+          });
           // Fire the undercut survey now, alongside the mesh — not gated behind
           // the undercut button (see ensureSlotUndercutGeometry).
           const surveyPromise = ensureSlotUndercutGeometry(slot, slotItem.data);
@@ -7230,6 +7274,105 @@ function removeViewerLoadingScreen() {
     return target?.clone?.() || null;
   });
   createPresetViewControls();
+
+  async function collectDesignSlotPayloads() {
+    const authPayload = {
+      machine_id: MACHINE_ID,
+      uuid: getLoggedInUser()?.uuid || "",
+      caseIntID: paramValue,
+    };
+    for (let slot = 1; slot <= 4; slot += 1) {
+      if (designSlotPayloads.has(slot)) continue;
+      try {
+        const result = await apiClient.post(
+          "/stl/slot/get",
+          [authPayload, { slotNumber: slot }],
+          false,
+          `Download slot ${slot}`
+        );
+        const item = Array.isArray(result) ? result[0] : result;
+        if (item?.data) {
+          designSlotPayloads.set(slot, {
+            data: item.data,
+            filename: item.filename || `slot-${slot}.stl`,
+          });
+        }
+      } catch (error) {
+        console.warn(`[viewer3D] download slot ${slot} failed`, error);
+      }
+    }
+    return [...designSlotPayloads.entries()].sort(([a], [b]) => a - b);
+  }
+
+  async function downloadExtra3DSlots(button) {
+    if (typeof window.JSZip === "undefined") {
+      window.alert("ZIP library failed to load — cannot download Extra 3D files.");
+      return;
+    }
+    const originalHtml = button.innerHTML;
+    button.disabled = true;
+    button.classList.add("is-busy");
+    button.setAttribute("aria-busy", "true");
+    button.innerHTML = '<i class="fa fa-spinner fa-spin" aria-hidden="true"></i>';
+    button.title = "Collecting Extra 3D files…";
+    try {
+      const files = await collectDesignSlotPayloads();
+      if (!files.length) {
+        window.alert("No Extra 3D files found for this case.");
+        return;
+      }
+      const zip = new window.JSZip();
+      for (const [slot, { data, filename }] of files) {
+        const safeName = String(filename || `slot-${slot}.stl`).replace(/[\\/]/g, "_");
+        zip.file(`slot_${slot}/${safeName}`, data, { base64: true });
+        if (meshFileKind(safeName) !== "ply") continue;
+
+        const sourceBytes = new Uint8Array(binaryStringToArrayBuffer(atob(data)));
+        const geometry = new PLYLoader().parse(sourceBytes.buffer);
+        try {
+          const companion = canonical3ShapeCompanion(sourceBytes, geometry);
+          if (companion) {
+            zip.file(`slot_${slot}/${companion.name}`, companion.bytes);
+          }
+        } finally {
+          geometry.dispose?.();
+        }
+      }
+      const blob = await zip.generateAsync({ type: "blob" }, ({ percent }) => {
+        button.title = `Preparing Extra 3D ZIP… ${Math.round(percent)}%`;
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `case_${paramValue || "unknown"}_extra_3d.zip`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("[viewer3D] Extra 3D ZIP download failed", error);
+      window.alert("Failed to download Extra 3D files.");
+    } finally {
+      button.disabled = false;
+      button.classList.remove("is-busy");
+      button.removeAttribute("aria-busy");
+      button.innerHTML = originalHtml;
+      button.title = "Download Extra 3D files";
+    }
+  }
+
+  const extra3DDownloadButton = document.createElement("button");
+  extra3DDownloadButton.type = "button";
+  extra3DDownloadButton.id = "toolbar-extra-3d-download-button";
+  extra3DDownloadButton.className = "smart-btn";
+  extra3DDownloadButton.style.order = "25";
+  extra3DDownloadButton.title = "Download Extra 3D files";
+  extra3DDownloadButton.setAttribute("aria-label", "Download Extra 3D files as ZIP");
+  extra3DDownloadButton.innerHTML = '<i class="fa fa-file-arrow-down" aria-hidden="true"></i>';
+  extra3DDownloadButton.addEventListener("click", () => {
+    downloadExtra3DSlots(extra3DDownloadButton);
+  });
+  getViewerNavToolbar().appendChild(extra3DDownloadButton);
 
   // Yellow "Objects" toggle, back in the black toolbar alongside reset — a
   // second, always-on-screen path to the same Show/Hide panel the persistent

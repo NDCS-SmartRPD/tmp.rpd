@@ -3,6 +3,7 @@
 
 import { lol } from "./crypt.js";
 import { getAppBasePath } from "./pageContext.js";
+import { apiPost } from "./api.js";
 
 // Substituted for localhost on shared links only: a phone scanning a QR code
 // can't reach a dev machine's localhost.
@@ -20,6 +21,13 @@ export function buildThreeDViewerUrl(caseId, { forShare = false } = {}) {
   }
   const basePath = getAppBasePath();
   return `${window.location.origin}${basePath}/src/pages/ThreeDViewer.html?id=${encryptedId}`;
+}
+
+export async function createSharedThreeDViewerUrl(caseId) {
+  if (!caseId) return "";
+  const share = await apiPost("/case/share/replace", { caseIntID: Number(caseId) });
+  const base = buildThreeDViewerUrl(caseId, { forShare: true });
+  return `${base}#share=${encodeURIComponent(share.token)}`;
 }
 
 // Always land on the MAIN case list. When this tab was opened from the case list,

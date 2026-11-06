@@ -5,14 +5,12 @@ const ARTIFICIAL_TOOTH_ENDPOINTS = [
   "/toothPlacementData/get",
 ];
 
-const FALLBACK_UUID = "AC4gRQXZJoNz9EhhW36Q8jMJXBsf";
-
 function getLoggedInUuid() {
   try {
     const user = JSON.parse(localStorage.getItem("loggedInUser") || "null");
-    return user?.uuid || FALLBACK_UUID;
+    return user?.uuid || "";
   } catch {
-    return FALLBACK_UUID;
+    return "";
   }
 }
 
@@ -3632,7 +3630,7 @@ export function createArtificialTeethRenderer({
     await apiClient.ensureSession();
     const response = await fetch(`${apiClient.baseUrl}${endpoint}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...apiClient.authHeaders() },
       body: JSON.stringify(payload),
     });
 
@@ -3659,7 +3657,7 @@ export function createArtificialTeethRenderer({
   const postArtificialTeethDebug = async (endpoint, payload) => {
     const response = await fetch(`${apiClient.baseUrl}${endpoint}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...apiClient.authHeaders() },
       body: JSON.stringify(payload),
     });
     const text = await response.text();

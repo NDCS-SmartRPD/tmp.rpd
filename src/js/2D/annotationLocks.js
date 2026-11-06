@@ -1091,7 +1091,7 @@ export async function saveAsJpeg() {
     const canvas = await composeJawCanvas(3);
     if (!canvas) {
       setMessage("Cannot find jaw SVGs to export.", true);
-      return;
+      return false;
     }
     const jpegUrl = canvas.toDataURL("image/jpeg", 0.92);
     const fileName = `case_${state.caseIntID ?? "unknown"}_arch_annotation.jpg`;
@@ -1111,9 +1111,11 @@ export async function saveAsJpeg() {
     } else {
       setMessage("Arch annotation saved as JPEG (upload skipped).", false);
     }
+    return true;
   } catch (err) {
     console.error("JPEG export failed", err);
     setMessage("Failed to export as JPEG.", true);
+    return false;
   }
 }
 

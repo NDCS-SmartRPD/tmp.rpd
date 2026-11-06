@@ -1,0 +1,92 @@
+import fs from "node:fs";
+
+const source = fs.readFileSync("src/js/2D/preview3D.js", "utf8");
+const styles = fs.readFileSync("css/2Dannotation.css", "utf8");
+
+describe("2D preview tab lifecycle", () => {
+  test("loads extras only from the Extra 3D tab and keeps them cached", () => {
+    const initialLoad = source.slice(
+      source.indexOf("export async function loadInteractiveJawPreview"),
+      source.indexOf("function init3DPreview")
+    );
+    const closeTab = source.slice(
+      source.indexOf("export function closeUpload3dModal"),
+      source.indexOf("function setSlotUploadProgress")
+    );
+
+    expect(initialLoad).not.toContain("ensureExtraStlsLoaded()");
+    expect(closeTab).not.toContain("disposeExtraStls()");
+    expect(closeTab).not.toContain("extrasLoadPromise = null");
+  });
+
+  test("opens Extra 3D in undercut mode and hides extras on exit", () => {
+    const enterTab = source.slice(
+      source.indexOf("function enterExtraStlStage"),
+      source.indexOf("function exitExtraStlStage")
+    );
+    const exitTab = source.slice(
+      source.indexOf("function exitExtraStlStage"),
+      source.indexOf("function captureExtraSlotShot")
+    );
+
+    expect(enterTab).toContain("setHeatmapEnabled(true)");
+    expect(exitTab).toContain("setExtraStlsVisible(false)");
+  });
+
+  test("downloads extra slots without navigating to or rendering the Extra 3D tab", () => {
+    const downloadMenu = source.slice(
+      source.indexOf("function ensureDownloadJawProfileModal"),
+      source.indexOf("// ---- Jaw panel rows")
+    );
+
+    expect(downloadMenu).toContain("Download Extra 3D files");
+    expect(downloadMenu).toContain("downloadExtraStlsAsZip()");
+    expect(downloadMenu).toContain("fetchExtraStlSlot(slotNumber)");
+    expect(downloadMenu).not.toContain("openUpload3dModal()");
+    expect(downloadMenu).not.toContain("renderExtraStl(");
+  });
+
+  test("shows non-blocking responsive progress for every jaw-profile download", () => {
+    const downloadMenu = source.slice(
+      source.indexOf("function ensureDownloadJawProfileModal"),
+      source.indexOf("// ---- Jaw panel rows")
+    );
+
+    expect(downloadMenu).toContain('role", "status"');
+    expect(downloadMenu).toContain('role="progressbar"');
+    expect(downloadMenu).toContain("beginDownloadProgress");
+    expect(downloadMenu).toContain("updateDownloadProgress");
+    expect(downloadMenu).toContain("finishDownloadProgress");
+    expect(downloadMenu).toContain("generateAsync({ type: \"blob\" },");
+    expect(downloadMenu).toContain("await saveAsJpeg()");
+    expect(styles).toContain(".jaw-dl-progress");
+    expect(styles).toContain("pointer-events: none");
+    expect(styles).toContain("env(safe-area-inset-bottom");
+  });
+
+  test("offers a PLY ZIP with canonical 3Shape PLY/JPG pairs for each surveyed jaw", () => {
+    const downloadMenu = source.slice(
+      source.indexOf("function ensureDownloadJawProfileModal"),
+      source.indexOf("// ---- Jaw panel rows")
+    );
+
+    expect(downloadMenu).toContain("Download PLY heatmap");
+    expect(downloadMenu).toContain("downloadJawPlysAsZip()");
+    expect(downloadMenu).toContain("buildSurveyHeatmapPlyPackage");
+    expect(downloadMenu).toContain("preview3DState.undercut?.[jaw]");
+    expect(downloadMenu).toContain("textureFilename");
+    expect(downloadMenu).toContain("await waitForDownloadPaint()");
+    expect(downloadMenu).toContain(
+      "requestAnimationFrame(() => window.requestAnimationFrame(resolve))"
+    );
+  });
+
+  test("downloads Extra 3D sources by slot and includes canonical palette JPGs", () => {
+    const downloadMenu = source.slice(
+      source.indexOf("function ensureDownloadJawProfileModal"),
+      source.indexOf("// ---- Jaw panel rows")
+    );
+    expect(downloadMenu).toContain("slot_${slotNumber}/${safeName}");
+    expect(downloadMenu).toContain("canonical3ShapeCompanion");
+  });
+});

@@ -7,7 +7,7 @@
 
 import { confirmModal, toast } from "../shared/toast.js";
 import { getLoggedInUser } from "../shared/api.js";
-import { buildThreeDViewerUrl } from "../shared/caseLinks.js";
+import { createSharedThreeDViewerUrl } from "../shared/caseLinks.js";
 import {
   buildAttachmentsSection,
   buildEmailSection,
@@ -61,11 +61,11 @@ async function copyImageToClipboard(dataUrl) {
 
 // Pick one capture and how much text goes with it, then copy both to the clipboard.
 // Share sheets are avoided — WhatsApp Desktop prints the temp file path into the caption.
-function buildSharePanel(caseIntID, shots, { caseName = "", ownerName = "" } = {}) {
+function buildSharePanel(caseIntID, shots, sharedLink, { caseName = "", ownerName = "" } = {}) {
   const section = el("section", "cn-approve-section cn-share is-hidden");
   section.appendChild(el("h4", "cn-approve-section-title", "Share"));
 
-  const link = () => buildThreeDViewerUrl(caseIntID, { forShare: true });
+  const link = () => sharedLink;
   let pickedArch = shots?.upper ? "upper" : shots?.lower ? "lower" : null;
   let format = "message";
 
@@ -215,8 +215,9 @@ function shotAttachments(shots) {
 // caseNote's shared sender pointed at the 3D viewer. `forShare` rewrites a localhost dev
 // URL to the live host; `images` is what the dialog handed back. Returns the sent count.
 export async function sendApprovalEmails(caseIntID, recipients, images) {
+  const link = await createSharedThreeDViewerUrl(caseIntID);
   return sendCaseEmails(caseIntID, recipients, {
-    link: buildThreeDViewerUrl(caseIntID, { forShare: true }),
+    link,
     images,
     subject: subjectFor(caseIntID),
   });
@@ -232,6 +233,7 @@ export async function confirmPreview3DApproval({
   caseName = "",
   ownerName = "",
 } = {}) {
+  const sharedLink = await createSharedThreeDViewerUrl(caseIntID);
   const content = el("div", "cn-approve");
 
   // Files reviewed on the left, who to tell on the right — the same split the 2D
@@ -253,7 +255,7 @@ export async function confirmPreview3DApproval({
     caseIntID,
     selectedRecipients: recipients.selectedRecipients,
     images,
-    link: () => buildThreeDViewerUrl(caseIntID, { forShare: true }),
+    link: () => sharedLink,
     subject: subjectFor(caseIntID),
     // Confirming with "Send" already mails these people.
     sendButton: false,
@@ -267,7 +269,7 @@ export async function confirmPreview3DApproval({
 
   // Folded away under the Share button until asked for, so the dialog still opens
   // on the request itself.
-  const sharePanel = buildSharePanel(caseIntID, shots, { caseName, ownerName });
+  const sharePanel = buildSharePanel(caseIntID, shots, sharedLink, { caseName, ownerName });
   content.appendChild(sharePanel);
 
   // Red, and reads as an aside: it says who the dialog is for, not what it does — a lab

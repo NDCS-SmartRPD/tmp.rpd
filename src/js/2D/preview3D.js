@@ -21,7 +21,22 @@ import {
 } from "../shared/api.js";
 import { updateCaseStatus, STATUS_3D_DESIGN_APPROVED } from "./caseNote.js";
 import { confirmPreview3DApproval, sendApprovalEmails } from "./preview3DApproval.js";
-import { isSupportedMeshFile, meshFileKind } from "../../viewer3d/meshFileSupport.js";
+import {
+  geometryToBinaryStl,
+  isSupportedMeshFile,
+  meshFileKind,
+  normalizeJawMeshFile,
+  plyBytesToBinaryStl,
+} from "../../viewer3d/meshFileSupport.js";
+import {
+  applyCanonical3ShapeTexture,
+  canonical3ShapeCompanion,
+  classifyPlyHeatmap,
+  prepareMeshUpload,
+} from "../../viewer3d/plyTextureBake.js";
+import {
+  buildSurveyHeatmapPlyPackage,
+} from "../../viewer3d/surveyHeatmapPly.js";
 
 // Re-exported: sibling 2D modules import it from here.
 export { getLoggedInUser };
@@ -257,11 +272,6 @@ export async function loadInteractiveJawPreview(area) {
       // their empty/upload state so the user can still add 3D files.
       showEmptyJawPanel();
       preview3DState.preview3DReadyForExtras = true;
-      // The one eager load: with no jaw mesh the extras are all there is, so deferring
-      // them would strand the user on an empty stage.
-      ensureExtraStlsLoaded().catch((err) =>
-        console.warn("[preview3D] extra STL background load failed", err)
-      );
     }
     return true;
   } finally {
@@ -2175,41 +2185,6 @@ function snapVertexColorBands(geometry, iterations = 2) {
   colorAttr.needsUpdate = true;
 }
 
-// Serialize a THREE.BufferGeometry (indexed or not) to a binary STL ArrayBuffer.
-function geometryToBinaryStl(geometry) {
-  const pos = geometry.attributes.position;
-  const index = geometry.index;
-  const triCount = (index ? index.count : pos.count) / 3;
-  const buffer = new ArrayBuffer(84 + triCount * 50);
-  const view = new DataView(buffer);
-  view.setUint32(80, triCount, true); // 80-byte header left zeroed
-  const vert = (i) => {
-    const vi = index ? index.getX(i) : i;
-    return [pos.getX(vi), pos.getY(vi), pos.getZ(vi)];
-  };
-  let offset = 84;
-  for (let t = 0; t < triCount; t += 1) {
-    const a = vert(t * 3);
-    const b = vert(t * 3 + 1);
-    const c = vert(t * 3 + 2);
-    let nx = (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]);
-    let ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
-    let nz = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
-    const len = Math.hypot(nx, ny, nz) || 1;
-    nx /= len; ny /= len; nz /= len;
-    view.setFloat32(offset, nx, true); offset += 4;
-    view.setFloat32(offset, ny, true); offset += 4;
-    view.setFloat32(offset, nz, true); offset += 4;
-    for (const v of [a, b, c]) {
-      view.setFloat32(offset, v[0], true); offset += 4;
-      view.setFloat32(offset, v[1], true); offset += 4;
-      view.setFloat32(offset, v[2], true); offset += 4;
-    }
-    view.setUint16(offset, 0, true); offset += 2; // attribute byte count
-  }
-  return buffer;
-}
-
 // A /stl/get payload may be a real STL *or* OFF text (both render here). A .stl-named file
 // holding OFF opens blank in STL viewers, so convert OFF → binary STL; pass STL bytes through.
 function jawDataToStlBytes(data) {
@@ -2665,6 +2640,7 @@ export function buildDllUndercutSurface(jaw, response) {
     point_size: response?.surveying_count || values.length,
     source: "dll_compute_surveying_no_pd",
     surveying_direction: response?.surveying_direction,
+    surveying_depths: values instanceof Float32Array ? values : Float32Array.from(values),
     surveying_values: {
       data: Array.from(new Uint8Array(heatmap.buffer)),
     },
@@ -3111,18 +3087,18 @@ function pickStlFile(onPick, accept = ".stl") {
 }
 
 function pickAndUploadJawStl(jaw) {
-  pickStlFile((file) => uploadJawStl(jaw, file));
+  pickStlFile((file) => uploadJawStl(jaw, file), ".stl,.ply");
 }
 
-// Upload a picked STL as the case's real jaw — mirrors case creation (POST /stl/raw + /stl) so it
-// round-trips, then renders into groups[jaw] so the icon/trash/survey controls operate on it.
+// Upload a picked jaw mesh as the case's real jaw. PLY is normalized to binary STL first,
+// preserving the existing API and DLL survey/occlusion contract.
 async function uploadJawStl(jaw, file) {
   if (!state.caseIntID) {
     setMessage?.("Open a case before uploading a 3D file.");
     return;
   }
-  if (!/\.stl$/i.test(file.name)) {
-    setMessage?.("Only .stl files are supported.");
+  if (!isSupportedMeshFile(file.name)) {
+    setMessage?.("Only .stl and .ply files are supported.");
     return;
   }
 
@@ -3175,13 +3151,14 @@ async function uploadJawStl(jaw, file) {
     });
 
   try {
-    const base64 = await fileToBase64(file);
+    const normalizedFile = await normalizeJawMeshFile(file, PLYLoader);
+    const base64 = await fileToBase64(normalizedFile);
 
     // Both buckets are attempted independently — a failure in one must not skip
     // the other (the desktop client and the web preview read different tables).
     const [rawOk, stlOk] = await Promise.all([
-      postStl("/stl/raw", { case_id: caseId, type: jawType, data: base64, filename: file.name }, "raw"),
-      postStl("/stl", { case_id: state.caseIntID, type: dbType, data: base64, filename: file.name }, "stl"),
+      postStl("/stl/raw", { case_id: caseId, type: jawType, data: base64, filename: normalizedFile.name }, "raw"),
+      postStl("/stl", { case_id: state.caseIntID, type: dbType, data: base64, filename: normalizedFile.name }, "stl"),
     ]);
 
     if (!rawOk && !stlOk) {
@@ -3189,7 +3166,7 @@ async function uploadJawStl(jaw, file) {
       return;
     }
 
-    await renderJawStl(jaw, { data: base64, type: jawType, filename: file.name });
+    await renderJawStl(jaw, { data: base64, type: jawType, filename: normalizedFile.name });
     // Auto-refresh this jaw's case thumbnail from the freshly rendered model so
     // the case tile updates without a manual capture. Best-effort.
     await uploadJawThumbnail(jaw);
@@ -3361,7 +3338,6 @@ async function loadExtraStlsIntoPreview() {
   preview3DState.extraFileNames = {};
   preview3DState.occupiedSlots = new Set();
   setExtrasLoadProgress(0.05, "Fetching extra files");
-  let loaded = 0;
   const total = EXTRA_STL_SLOTS.length;
   for (let i = 0; i < total; i += 1) {
     const slotNumber = EXTRA_STL_SLOTS[i];
@@ -3370,7 +3346,6 @@ async function loadExtraStlsIntoPreview() {
     // and it goes out of scope before the next slot is asked for.
     const extra = await fetchExtraStlSlot(slotNumber);
     if (!extra) continue;
-    loaded += 1;
     preview3DState.occupiedSlots.add(slotNumber);
     preview3DState.extraFileNames[slotNumber] = extra.filename;
     // Isolate per-slot failures: a single corrupt/undecodable extra STL must not
@@ -3387,13 +3362,6 @@ async function loadExtraStlsIntoPreview() {
     });
   }
   setExtrasLoadProgress(1, "Extra 3D files ready");
-  // Extras stay off stage until the Extra 3D tab is up — unless there are no jaw meshes
-  // at all, where hiding them too would leave an empty viewport.
-  if (loaded && !preview3DState.groups.upper && !preview3DState.groups.lower) {
-    setExtraStlsVisible(true);
-    centerRootOnCombinedBounds(preview3DState.modelRoot);
-    fitPreviewCamera();
-  }
   renderUpload3dList();
 }
 
@@ -3817,29 +3785,17 @@ async function renderExtraStl({ slotNumber, filename, data }) {
   const loader = kind === "ply" ? new PLYLoader() : new STLLoader();
   const jaw = EXTRA_SLOT_JAW[slotNumber] || null;
   const mode = getExtraJawHeatmapMode(jaw) || "undercut";
-  // let geometry = loader.parse(base64ToArrayBuffer(data));
-  // const embeddedColors = kind === "ply" && Boolean(geometry.getAttribute("color"));
-  // const extraUndercutSurface = jaw && kind === "stl"
-  //   ? await computeExtraJawUndercutSurface(jaw, data, label)
-  //   : null;
-  // const initialSurface = mode === "undercut" ? extraUndercutSurface : null;
-  // geometry = embeddedColors
-  //   ? getDisplayGeometryForQuality(geometry, label)
-  //   : jaw
-  //   ? buildExtraJawGeometry(geometry, jaw, mode, label, initialSurface)
-  //   : getDisplayGeometryForQuality(mergeStlVertices(geometry), label);
-  // geometry.computeVertexNormals();
-  // if (embeddedColors) cacheGeometryHeatmapColors(geometry, "undercut");
-
-  // Jaw STLs are drawn and surveyed as the DLL's repaired copy, so the DLL's per-vertex
-  // values line up with the page's vertices. Falls back to the upload if the repair fails.
-  // const repaired = jaw && kind === "stl" ? await repairExtraStl(jaw, data, label) : null;
-  // const meshData = repaired?.data || data;
-  // The backend now remaps the DLL's values onto the upload's own vertices, so the repaired
-  // copy isn't needed: the upload is drawn and surveyed as-is.
-  const meshData = data;
-  // let geometry = loader.parse(base64ToArrayBuffer(data));
-  let geometry = loader.parse(base64ToArrayBuffer(meshData));
+  const sourceBuffer = base64ToArrayBuffer(data);
+  const sourceBytes = new Uint8Array(sourceBuffer);
+  let geometry = loader.parse(sourceBuffer);
+  const plyFormat = kind === "ply" ? classifyPlyHeatmap(sourceBytes, geometry) : "plain";
+  if (plyFormat === "canonical-3shape") {
+    await applyCanonical3ShapeTexture(geometry, sourceBytes);
+  } else if (plyFormat === "legacy-rgb") {
+    setMessage?.("Legacy RGB PLY loaded. Re-upload the original 3Shape PLY for exact round-tripping.");
+  } else if (plyFormat === "noncanonical-textured") {
+    setMessage?.("Noncanonical textured PLY loaded with the RGB compatibility fallback.");
+  }
   const embeddedColors = kind === "ply" && Boolean(geometry.getAttribute("color"));
   // const extraUndercutSurface = jaw && kind === "stl"
   //   ? await computeExtraJawUndercutSurface(jaw, data, label)
@@ -3994,7 +3950,7 @@ async function deleteExtraStl(slotNumber) {
 
 // Upload a user-picked STL into a specific slot (or the next free slot when no
 // target is given), then render it.
-async function uploadExtraStl(file, targetSlot = null) {
+async function uploadExtraStl(files, targetSlot = null) {
   if (!state.caseIntID) {
     setMessage?.("Open a case before uploading a 3D file.");
     return;
@@ -4028,11 +3984,33 @@ async function uploadExtraStl(file, targetSlot = null) {
     setMessage?.("All 4 extra 3D file slots are in use. Delete one first.");
     return;
   }
-  if (!isSupportedMeshFile(file.name)) {
+  const selection = (Array.isArray(files) ? files : [files]).filter(Boolean);
+  if (!selection.some((entry) => isSupportedMeshFile(entry?.name))) {
     setMessage?.("Only .stl and .ply files are supported.");
     return;
   }
 
+  if (!(await ensureThreeDeps())) {
+    setMessage?.("3D file support could not be loaded. Please try again.");
+    return;
+  }
+  let prepared;
+  try {
+    prepared = await prepareMeshUpload(selection, PLYLoader);
+  } catch (error) {
+    console.error("[preview3D] PLY texture bake failed", error);
+    setMessage?.("The PLY texture could not be read. Please select the original PLY and JPG again.");
+    return;
+  }
+  const file = prepared?.file;
+  if (!file) {
+    setMessage?.("No supported 3D file was selected.");
+    return;
+  }
+  if (prepared?.textureMissing) {
+    setMessage?.("Select the PLY and its referenced JPG together to include the 3Shape heatmap.");
+    return;
+  }
   // Draw this slot's row as an inline progress bar, then start the upload.
   const controller = new AbortController();
   preview3DState.uploadingSlots.set(freeSlot, {
@@ -4079,6 +4057,7 @@ async function uploadExtraStl(file, targetSlot = null) {
     }
     preview3DState.occupiedSlots.add(freeSlot);
     await renderExtraStl({ slotNumber: freeSlot, filename: file.name, data: base64 });
+    if (prepared?.warning) setMessage?.(prepared.warning);
     // Uploads always come from the open panel, so stage the new file (this is what puts
     // the FIRST extra on screen — opening an all-empty panel doesn't stage anything).
     if (isUpload3dModalOpen()) {
@@ -4175,9 +4154,8 @@ function enterExtraStlStage() {
           ? { position: camera.position.clone(), up: camera.up.clone(), target: controls.target.clone() }
           : null,
     };
-    // Extras render plain: the tab opens with the undercut heatmap closed, and
-    // its own toggle is what turns it on.
-    setHeatmapEnabled(false);
+    // Extra jaw files open surveyed; leaving restores the 3D Preview tab's mode.
+    setHeatmapEnabled(true);
   }
   for (const jaw of ["upper", "lower"]) {
     if (!preview3DState.groups?.[jaw]) continue;
@@ -4193,11 +4171,8 @@ function enterExtraStlStage() {
 // longer hold it (the last one was deleted).
 function exitExtraStlStage() {
   const prev = preview3DState.extrasPrevStage;
-  // Extras go back off stage — unless there are no jaw meshes to hand it back to
-  // (same fallback loadExtraStlsIntoPreview uses), which would leave a blank viewport.
-  const hasJaws = !!(preview3DState.groups?.upper || preview3DState.groups?.lower);
   setJawMeshesOnStage(true);
-  setExtraStlsVisible(!hasJaws);
+  setExtraStlsVisible(false);
   preview3DState.stageHiddenJaws.clear();
   if (prev) {
     if (prev.upper !== undefined) setJawVisible("upper", !!prev.upper);
@@ -4414,15 +4389,13 @@ export function openUpload3dModal() {
     if (!isUpload3dModalOpen()) return;
     renderUpload3dList();
     enterExtraStlStage();
-    // The extras land plain. Forced here, not just on entry: the jaw load's own
-    // heatmap call (and the saved-survey auto-apply) can land mid-download.
-    setHeatmapEnabled(false);
+    // Re-assert after the async load in case jaw survey work changed the shared mode.
+    setHeatmapEnabled(true);
   });
   return true;
 }
 
-// Leaving the tab: put the jaw meshes back on the stage so the 3D Preview tab
-// shows what it always did, and free the slot meshes.
+// Leaving the tab: put the jaw meshes back on stage and keep slot meshes cached.
 export function closeUpload3dModal() {
   preview3DState.extrasTabOpen = false;
   const modal = preview3DState.upload3dModal;
@@ -4430,32 +4403,7 @@ export function closeUpload3dModal() {
     modal.overlay.classList.add("is-hidden");
     modal.overlay.setAttribute("aria-hidden", "true");
   }
-  // Freed BEFORE handing the stage back: exitExtraStlStage re-centres the root on what
-  // is on it, and disposed extras must not still be counted in those bounds.
-  disposeExtraStls();
   if (preview3DState.extrasPrevStage) exitExtraStlStage();
-}
-
-// Drops every slot mesh and resets the load latch so extras only hold memory while their
-// tab is up. They are the biggest thing in the scene and on screen the least.
-function disposeExtraStls() {
-  // With no jaw meshes the extras ARE the stage (same fallback the load uses);
-  // freeing them would leave an empty viewport for a case that has nothing else.
-  const hasJaws = !!(preview3DState.groups?.upper || preview3DState.groups?.lower);
-  if (!hasJaws) return;
-  // Never mid-upload: that slot's row and its rendered result belong to a live request.
-  if (preview3DState.uploadingSlots.size || preview3DState.extrasLoading) return;
-  for (const slot of Object.keys(preview3DState.extraGroups || {})) {
-    const entry = preview3DState.extraGroups[slot];
-    if (!entry?.group) continue;
-    preview3DState.modelRoot?.remove(entry.group);
-    disposeObject3D(entry.group);
-  }
-  preview3DState.extraGroups = {};
-  preview3DState.extrasVisible = false;
-  // Drop the latch so the next open re-fetches; occupancy is re-read with it.
-  preview3DState.extrasLoadPromise = null;
-  preview3DState.extrasLoadProgress = null;
 }
 
 // Drives one slot's inline progress bar; `frac` is 0..1, and 1 means the bytes are in but
@@ -4693,20 +4641,20 @@ function enableSlotDropZone(el, slot) {
     el.classList.remove("is-dragover");
     if (!dragEventHasFiles(e)) return;
     e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (!file) return;
-    if (!isSupportedMeshFile(file.name)) {
+    const files = Array.from(e.dataTransfer.files || []);
+    if (!files.length) return;
+    if (!files.some((file) => isSupportedMeshFile(file.name))) {
       setMessage?.("Only .stl and .ply files are supported.");
       return;
     }
-    uploadExtraStl(file, slot);
+    uploadExtraStl(files, slot);
   });
 }
 
 // ---- Download jaw profile ------------------------------------------------
 
-// `request-download-jaw-profile` (footer + noticeboard) opens this menu: Download STL file
-// (upper + lower zipped) or Download as JPEG (reuses the "Save as JPEG" arch export).
+// `request-download-jaw-profile` (footer + noticeboard) opens this menu: jaw STLs,
+// surveyed jaw PLYs, original Extra 3D slot files, or JPEG.
 function ensureDownloadJawProfileModal() {
   if (preview3DState.downloadJawModal) return preview3DState.downloadJawModal;
 
@@ -4753,6 +4701,30 @@ function ensureDownloadJawProfileModal() {
     downloadJawStlsAsZip();
   });
 
+  const plyBtn = document.createElement("button");
+  plyBtn.type = "button";
+  plyBtn.className = "jaw-dl-option";
+  plyBtn.innerHTML =
+    '<i class="fa fa-palette" aria-hidden="true"></i>' +
+    '<span class="jaw-dl-option-title">Download PLY heatmap</span>' +
+    '<span class="jaw-dl-option-sub">Applied undercut colours baked into a .zip</span>';
+  plyBtn.addEventListener("click", () => {
+    closeDownloadJawProfileModal();
+    downloadJawPlysAsZip();
+  });
+
+  const extraBtn = document.createElement("button");
+  extraBtn.type = "button";
+  extraBtn.className = "jaw-dl-option";
+  extraBtn.innerHTML =
+    '<i class="fa fa-box-archive" aria-hidden="true"></i>' +
+    '<span class="jaw-dl-option-title">Download Extra 3D files</span>' +
+    '<span class="jaw-dl-option-sub">All occupied slots as a .zip</span>';
+  extraBtn.addEventListener("click", () => {
+    closeDownloadJawProfileModal();
+    downloadExtraStlsAsZip();
+  });
+
   const jpegBtn = document.createElement("button");
   jpegBtn.type = "button";
   jpegBtn.className = "jaw-dl-option";
@@ -4763,10 +4735,12 @@ function ensureDownloadJawProfileModal() {
   jpegBtn.addEventListener("click", () => {
     closeDownloadJawProfileModal();
     // Reuse the existing "Save as JPEG" flow (also re-uploads the 2D thumbnail).
-    saveAsJpeg();
+    downloadJawProfileJpeg();
   });
 
   options.appendChild(stlBtn);
+  options.appendChild(plyBtn);
+  options.appendChild(extraBtn);
   options.appendChild(jpegBtn);
   panel.appendChild(header);
   panel.appendChild(options);
@@ -4802,6 +4776,72 @@ function closeDownloadJawProfileModal() {
   }
 }
 
+let activeDownloadProgress = null;
+let downloadProgressTimer = null;
+
+function ensureDownloadProgress() {
+  let progress = document.getElementById("jawDownloadProgress");
+  if (progress) return progress;
+  progress = document.createElement("div");
+  progress.id = "jawDownloadProgress";
+  progress.className = "jaw-dl-progress is-hidden is-indeterminate";
+  progress.setAttribute("role", "status");
+  progress.setAttribute("aria-live", "polite");
+  progress.innerHTML =
+    '<div class="jaw-dl-progress-copy">Preparing download…</div>' +
+    '<div class="jaw-dl-progress-track" role="progressbar" aria-label="Download preparation progress">' +
+      '<div class="jaw-dl-progress-fill"></div>' +
+    '</div>';
+  document.body.appendChild(progress);
+  return progress;
+}
+
+function beginDownloadProgress(label) {
+  const token = Symbol("download-progress");
+  activeDownloadProgress = token;
+  clearTimeout(downloadProgressTimer);
+  const progress = ensureDownloadProgress();
+  progress.querySelector(".jaw-dl-progress-copy").textContent = label;
+  progress.querySelector(".jaw-dl-progress-track").removeAttribute("aria-valuenow");
+  progress.classList.remove("is-hidden", "is-error");
+  progress.classList.add("is-indeterminate");
+  return token;
+}
+
+function updateDownloadProgress(token, label, percent) {
+  if (token !== activeDownloadProgress) return;
+  const progress = ensureDownloadProgress();
+  const value = Math.max(0, Math.min(100, Math.round(percent)));
+  progress.querySelector(".jaw-dl-progress-copy").textContent = label;
+  progress.querySelector(".jaw-dl-progress-track").setAttribute("aria-valuenow", String(value));
+  progress.querySelector(".jaw-dl-progress-fill").style.width = `${value}%`;
+  progress.classList.remove("is-indeterminate");
+}
+
+function finishDownloadProgress(token, label, isError = false) {
+  if (token !== activeDownloadProgress) return;
+  updateDownloadProgress(token, label, 100);
+  const progress = ensureDownloadProgress();
+  progress.classList.toggle("is-error", isError);
+  downloadProgressTimer = setTimeout(() => {
+    if (token !== activeDownloadProgress) return;
+    progress.classList.add("is-hidden");
+    activeDownloadProgress = null;
+  }, isError ? 3500 : 1800);
+}
+
+function waitForDownloadPaint() {
+  return new Promise((resolve) =>
+    window.requestAnimationFrame(() => window.requestAnimationFrame(resolve))
+  );
+}
+
+async function downloadJawProfileJpeg() {
+  const token = beginDownloadProgress("Preparing JPEG…");
+  const saved = await saveAsJpeg();
+  finishDownloadProgress(token, saved ? "JPEG downloaded" : "JPEG export failed", !saved);
+}
+
 // Collect upper + lower jaw STLs as { jaw, data(base64), filename }. Prefers the
 // jaws currently shown in the 3D preview; falls back to a backend fetch.
 async function collectJawStlFiles() {
@@ -4829,18 +4869,22 @@ async function downloadJawStlsAsZip() {
     setMessage("ZIP library failed to load — cannot download STL files.", true);
     return;
   }
+  const progressToken = beginDownloadProgress("Preparing jaw files…");
   try {
     setMessage("Preparing STL download…", false);
     const jaws = await collectJawStlFiles();
     if (!jaws.length) {
       setMessage("No jaw STL files found for this case.", true);
+      finishDownloadProgress(progressToken, "No jaw files found", true);
       return;
     }
     const zip = new window.JSZip();
     jaws.forEach(({ jaw, data }) => {
       zip.file(`${jaw}.stl`, jawDataToStlBytes(data));
     });
-    const blob = await zip.generateAsync({ type: "blob" });
+    const blob = await zip.generateAsync({ type: "blob" }, ({ percent }) => {
+      updateDownloadProgress(progressToken, "Preparing jaw ZIP…", 15 + percent * 0.85);
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -4850,9 +4894,167 @@ async function downloadJawStlsAsZip() {
     a.remove();
     URL.revokeObjectURL(url);
     setMessage(`Downloaded ${jaws.length} jaw STL file(s) as ZIP.`, false);
+    finishDownloadProgress(progressToken, "Jaw ZIP downloaded");
   } catch (err) {
     console.error("[preview3D] STL zip download failed", err);
     setMessage("Failed to download STL files.", true);
+    finishDownloadProgress(progressToken, "Jaw download failed", true);
+  }
+}
+
+async function downloadJawPlysAsZip() {
+  if (typeof window.JSZip === "undefined") {
+    setMessage("ZIP library failed to load — cannot download PLY files.", true);
+    return;
+  }
+
+  const progressToken = beginDownloadProgress("Preparing undercut PLY files…");
+  try {
+    setMessage("Preparing PLY heatmap download…", false);
+    // Let the closed menu and progress bar paint before CPU-heavy mesh baking.
+    await waitForDownloadPaint();
+    await ensureThreeDeps();
+    const jaws = await collectJawStlFiles();
+    if (!jaws.length) {
+      setMessage("No jaw mesh files found for this case.", true);
+      finishDownloadProgress(progressToken, "No jaw files found", true);
+      return;
+    }
+
+    const hasSurveyHeatmap = jaws.some(({ jaw }) =>
+      surveyingVertexCount(preview3DState.undercut?.[jaw]) > 0
+    );
+    if (!hasSurveyHeatmap) {
+      setMessage("Apply a survey angle before downloading a PLY heatmap.", true);
+      finishDownloadProgress(progressToken, "No undercut heatmap applied", true);
+      return;
+    }
+
+    const zip = new window.JSZip();
+    jaws.forEach(({ jaw, data, filename }, index) => {
+      updateDownloadProgress(
+        progressToken,
+        `Baking ${jaw} jaw heatmap…`,
+        5 + (index / jaws.length) * 45
+      );
+      const surface = preview3DState.undercut?.[jaw];
+      const depths = surface?.surveying_depths;
+      if (!depths?.length) return;
+      let meshBytes = new Uint8Array(base64ToArrayBuffer(data));
+      if (meshFileKind(filename) === "ply") {
+        meshBytes = new Uint8Array(plyBytesToBinaryStl(meshBytes, PLYLoader));
+      }
+      const bundle = buildSurveyHeatmapPlyPackage(
+        meshBytes,
+        { surveying_values: Array.from(depths) },
+        filename,
+        jaw
+      );
+      zip.file(bundle.plyFilename, bundle.ply);
+      zip.file(bundle.textureFilename, bundle.textureBytes);
+    });
+
+    const blob = await zip.generateAsync({ type: "blob" }, ({ percent }) => {
+      updateDownloadProgress(progressToken, "Preparing PLY ZIP…", 50 + percent * 0.5);
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `case_${state.caseIntID ?? "unknown"}_jaw_heatmap_ply.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setMessage(`Downloaded ${jaws.length} jaw PLY file(s) with baked colours.`, false);
+    finishDownloadProgress(progressToken, "PLY heatmap ZIP downloaded");
+  } catch (err) {
+    console.error("[preview3D] PLY heatmap zip download failed", err);
+    setMessage("Failed to download PLY heatmap files.", true);
+    finishDownloadProgress(progressToken, "PLY heatmap download failed", true);
+  }
+}
+
+function cachedExtraStlFiles() {
+  return EXTRA_STL_SLOTS.map((slotNumber) => {
+    const entry = preview3DState.extraGroups?.[slotNumber];
+    if (!entry?.data) return null;
+    return {
+      slotNumber,
+      filename: entry.filename || preview3DState.extraFileNames?.[slotNumber],
+      data: entry.data,
+    };
+  }).filter(Boolean);
+}
+
+// Downloading does not enter the Extra 3D tab or parse/render a mesh. If that tab has
+// already loaded, use its cached payloads; otherwise fetch the four fixed slots directly.
+async function collectExtraStlFiles(onProgress) {
+  if (preview3DState.extrasLoadPromise) {
+    await preview3DState.extrasLoadPromise;
+  }
+
+  const files = cachedExtraStlFiles();
+  const cachedSlots = new Set(files.map(({ slotNumber }) => slotNumber));
+  for (let i = 0; i < EXTRA_STL_SLOTS.length; i += 1) {
+    const slotNumber = EXTRA_STL_SLOTS[i];
+    if (!cachedSlots.has(slotNumber)) {
+      const file = await fetchExtraStlSlot(slotNumber);
+      if (file) files.push(file);
+    }
+    onProgress?.((i + 1) / EXTRA_STL_SLOTS.length);
+  }
+  return files;
+}
+
+async function downloadExtraStlsAsZip() {
+  if (typeof window.JSZip === "undefined") {
+    setMessage("ZIP library failed to load — cannot download Extra 3D files.", true);
+    return;
+  }
+  const progressToken = beginDownloadProgress("Finding Extra 3D files…");
+  try {
+    setMessage("Preparing Extra 3D download…", false);
+    const files = await collectExtraStlFiles((fraction) => {
+      updateDownloadProgress(progressToken, "Collecting Extra 3D files…", fraction * 35);
+    });
+    if (!files.length) {
+      setMessage("No Extra 3D files found for this case.", true);
+      finishDownloadProgress(progressToken, "No Extra 3D files found", true);
+      return;
+    }
+
+    const zip = new window.JSZip();
+    for (const { slotNumber, filename, data } of files) {
+      const safeName = String(filename || `slot${slotNumber}.stl`).replace(/[\\/]/g, "_");
+      zip.file(`slot_${slotNumber}/${safeName}`, data, { base64: true });
+      if (meshFileKind(filename) === "ply") {
+        const bytes = new Uint8Array(base64ToArrayBuffer(data));
+        const geometry = new PLYLoader().parse(bytes.buffer);
+        try {
+          const companion = canonical3ShapeCompanion(bytes, geometry);
+          if (companion) zip.file(`slot_${slotNumber}/${companion.name}`, companion.bytes);
+        } finally {
+          geometry.dispose?.();
+        }
+      }
+    }
+    const blob = await zip.generateAsync({ type: "blob" }, ({ percent }) => {
+      updateDownloadProgress(progressToken, "Preparing Extra 3D ZIP…", 35 + percent * 0.65);
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `case_${state.caseIntID ?? "unknown"}_extra_3d.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setMessage(`Downloaded ${files.length} Extra 3D file(s) as ZIP.`, false);
+    finishDownloadProgress(progressToken, "Extra 3D ZIP downloaded");
+  } catch (err) {
+    console.error("[preview3D] Extra 3D zip download failed", err);
+    setMessage("Failed to download Extra 3D files.", true);
+    finishDownloadProgress(progressToken, "Extra 3D download failed", true);
   }
 }
 
