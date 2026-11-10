@@ -1,4 +1,4 @@
-import { auditedCaseWrite } from "../src/js/shared/caseActivitySignal.js";
+import { auditedCaseWrite, reportCaseActivity } from "../src/js/shared/caseActivitySignal.js";
 
 const originalFetch = global.fetch;
 const caller = { uuid: "actor" };
@@ -30,4 +30,13 @@ test("preserves the legacy write when the audited route is absent", async () => 
   expect(result.status).toBe(200);
   expect(global.fetch.mock.calls[1][0]).toMatch(/\/case\/rename\/32$/);
   expect(JSON.parse(global.fetch.mock.calls[1][1].body)).toEqual([caller, { case_id: payload.name }]);
+});
+
+test("sends the viewer page without changing the legacy case-open action", () => {
+  global.fetch = jest.fn().mockResolvedValue(response(204));
+  reportCaseActivity(32, "Case opened", "reported", "share-token", "3D Viewer");
+  const [, request] = global.fetch.mock.calls[0];
+  expect(JSON.parse(request.body)[1]).toMatchObject({
+    caseIntID: 32, action: "Case opened", page: "3D Viewer",
+  });
 });

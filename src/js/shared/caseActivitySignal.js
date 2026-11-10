@@ -31,7 +31,7 @@ async function drain() {
   }
 }
 
-export function reportCaseActivity(caseId, action, outcome = "reported", shareToken = null) {
+export function reportCaseActivity(caseId, action, outcome = "reported", shareToken = null, page) {
   const caseIntID = Number(caseId);
   const caller = shareToken ? {} : callerIdentity();
   if (!Number.isSafeInteger(caseIntID) || caseIntID <= 0 ||
@@ -45,7 +45,7 @@ export function reportCaseActivity(caseId, action, outcome = "reported", shareTo
         "Content-Type": "application/json",
         ...(shareToken ? { Authorization: `Bearer ${shareToken}` } : {}),
       },
-      body: JSON.stringify([caller, { caseIntID, action, outcome, operation: crypto.randomUUID() }]),
+      body: JSON.stringify([caller, { caseIntID, action, outcome, operation: crypto.randomUUID(), page }]),
       keepalive: true,
     },
   });

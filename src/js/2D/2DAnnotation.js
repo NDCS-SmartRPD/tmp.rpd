@@ -1844,7 +1844,7 @@ function init() {
   // Start the network work before the feature modules download, so requests overlap the
   // imports instead of waterfalling. Only the START is hoisted; apply/render still wait.
   fetchCaseDetail().then(detail => {
-    if (detail) reportCaseActivity(state.caseIntID, "Case opened in 2D Annotation");
+    if (detail) reportCaseActivity(state.caseIntID, "Case opened", "reported", null, "2D Annotation");
   }); // shared /case/get — also reused by preview3D
   const loggedInUser = getLoggedInUser();
   // Guests still need the design or the arch renders empty, so fall back to VIEWER_UUID.

@@ -54,7 +54,7 @@ async function populateCaseName() {
     });
     if (!response.ok) return;
     const detail = await response.json();
-    reportCaseActivity(caseId, "Case opened in 3D Viewer", "reported", shareToken);
+    reportCaseActivity(caseId, "Case opened", "reported", shareToken, "3D Viewer");
     const label = detail?.case_id ? `${caseId} : ${detail.case_id}` : String(caseId);
     footerCaseName.textContent = label;
   } catch (error) {
