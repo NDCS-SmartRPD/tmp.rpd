@@ -1,6 +1,8 @@
 // Import the THREE.js library
 import * as THREE from "three";
 import { getAppBasePath } from "../js/shared/pageContext.js";
+import { readShareToken } from "../js/shared/shareSession.js";
+import { reportCaseActivity } from "../js/shared/caseActivitySignal.js";
 // To allow for the camera to move around the scene
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
@@ -2843,6 +2845,7 @@ function createPolylineVisibilityToggle(container, domElement) {
     const snapshot = polylineUndoStack.pop();
     polylineRedoStack.push(capturePolylineSnapshot());
     applyPolylineSnapshot(snapshot);
+    reportCaseActivity(paramValue, "Design edit undone");
     updatePolylineUndoRedoButtons();
   });
   _undoBtn.innerHTML = `<img src="${_polylineBp}/assets/Icon_undo2.png" alt="Undo" style="width:22px;height:22px;object-fit:contain;display:block;margin:auto;pointer-events:none;">`;
@@ -2856,6 +2859,7 @@ function createPolylineVisibilityToggle(container, domElement) {
     const snapshot = polylineRedoStack.pop();
     polylineUndoStack.push(capturePolylineSnapshot());
     applyPolylineSnapshot(snapshot);
+    reportCaseActivity(paramValue, "Design edit redone");
     updatePolylineUndoRedoButtons();
   });
   _redoBtn.innerHTML = `<img src="${_polylineBp}/assets/Icon_redo2.png" alt="Redo" style="width:22px;height:22px;object-fit:contain;display:block;margin:auto;pointer-events:none;">`;
@@ -3155,6 +3159,7 @@ function attachPolylineDragHandlers(domElement) {
       if (polylineUndoStack.length > 50) polylineUndoStack.shift();
       polylineRedoStack.length = 0;
       polylinePreDragSnapshot = null;
+      reportCaseActivity(paramValue, "Design edited locally");
       updatePolylineUndoRedoButtons();
     }
   };
@@ -7305,7 +7310,9 @@ function removeViewerLoadingScreen() {
   }
 
   async function downloadExtra3DSlots(button) {
+    const shareToken = readShareToken();
     if (typeof window.JSZip === "undefined") {
+      reportCaseActivity(paramValue, "Export failed", "failed", shareToken);
       window.alert("ZIP library failed to load — cannot download Extra 3D files.");
       return;
     }
@@ -7318,6 +7325,7 @@ function removeViewerLoadingScreen() {
     try {
       const files = await collectDesignSlotPayloads();
       if (!files.length) {
+        reportCaseActivity(paramValue, "Export failed", "failed", shareToken);
         window.alert("No Extra 3D files found for this case.");
         return;
       }
@@ -7347,10 +7355,12 @@ function removeViewerLoadingScreen() {
       anchor.download = `case_${paramValue || "unknown"}_extra_3d.zip`;
       document.body.appendChild(anchor);
       anchor.click();
+      reportCaseActivity(paramValue, "Export started", "reported", shareToken);
       anchor.remove();
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error("[viewer3D] Extra 3D ZIP download failed", error);
+      reportCaseActivity(paramValue, "Export failed", "failed", shareToken);
       window.alert("Failed to download Extra 3D files.");
     } finally {
       button.disabled = false;

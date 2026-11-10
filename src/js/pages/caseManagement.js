@@ -42,6 +42,7 @@ import { normalizeImageFile } from "../shared/imageFiles.js";
 import { recordCollaborators, reconcileCollaborators } from "../shared/userSuggest.js";
 import { confirmRemoveUserFromCase } from "../shared/caseRoles.js";
 import { createCaseHistory } from "../shared/caseHistory.js";
+import { auditedCaseWrite, reportCaseActivity } from "../shared/caseActivitySignal.js";
 import { caseListFilterText, matchesCaseListFilter, parseCaseListFilter } from "../shared/caseListFilter.js";
 import {
   buildSurveyHeatmapPlyPackage,
@@ -271,22 +272,9 @@ async function deleteCaseById(caseId, { skipConfirm = false } = {}) {
   }
 
   const caseIdForApi = toNumericCaseId(caseId);
-  const requestBody = JSON.stringify([
-    callerIdentity({ caseIntID: caseIdForApi }),
-    { case_int_id: caseIdForApi },
-  ]);
-
-  console.log("[case/delete] →", { caseId: caseIdForApi, body: requestBody });
-
   try {
-    const response = await fetch(
-      `${API_BASE}/case/delete/${caseIdForApi}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: requestBody,
-      }
-    );
+    const response = await auditedCaseWrite("delete", callerIdentity({ caseIntID: caseIdForApi }),
+      { caseIntID: caseIdForApi }, `case/delete/${caseIdForApi}`, "POST", { case_int_id: caseIdForApi });
     logApi(response, 'POST /case/delete/:id');
     const rawText = await response.text();
     console.log("[case/delete] ←", response.status, rawText);
@@ -774,12 +762,14 @@ async function downloadCaseReferenceImages(caseIntId, caseLabel) {
   try {
     const files = await collectReferenceImageFiles(caseIntId, user.uuid, base);
     if (!files.length) {
+      reportCaseActivity(caseIntId, "Export failed", "failed");
       toast.info("No reference images found for this case.");
       return;
     }
 
     if (files.length === 1) {
       triggerBlobDownload(files[0].bytes, files[0].name);
+      reportCaseActivity(caseIntId, "Export started");
       toast.success("Reference image download ready.");
       return;
     }
@@ -797,9 +787,11 @@ async function downloadCaseReferenceImages(caseIntId, caseLabel) {
         await new Promise((resolve) => setTimeout(resolve, 300));
       }
     }
+    reportCaseActivity(caseIntId, "Export started");
     toast.success(`${files.length} reference images downloaded.`);
   } catch (err) {
     console.error("Failed to download reference images:", err);
+    reportCaseActivity(caseIntId, "Export failed", "failed");
     toast.error(`Failed to download reference images. ${err.message || err}`);
   }
 }
@@ -1054,6 +1046,7 @@ async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
   }
 
   if (!added) {
+    reportCaseActivity(caseIntId, "Export failed", "failed");
     toast.info("No files available to download for this case.");
     finishCaseDownloadProgress(progressToken, "No files available", true);
     return;
@@ -1064,10 +1057,12 @@ async function downloadCaseFiles(caseIntId, caseLabel, apiStatus) {
       updateCaseDownloadProgress(progressToken, "Packaging case ZIP…", 85 + percent * 0.15);
     });
     triggerBlobDownload(blob, `${base}.zip`);
+    reportCaseActivity(caseIntId, "Export started");
     toast.success("Download ready.");
     finishCaseDownloadProgress(progressToken, "Case ZIP downloaded");
   } catch (err) {
     console.error("❌ Failed to generate zip:", err);
+    reportCaseActivity(caseIntId, "Export failed", "failed");
     toast.error(`Failed to generate zip: ${err.message || err}`);
     finishCaseDownloadProgress(progressToken, "Case ZIP download failed", true);
   }
@@ -1476,6 +1471,7 @@ async function handleRowClick(caseId) {
     );
 
     displayCaseDetails(detail);
+    reportCaseActivity(caseId, "Case opened");
     await fetchThumbnails(caseId);
 
     // Selecting a row only previews it and must NOT reorder the list — the
@@ -2432,14 +2428,9 @@ async function submitOwnershipTransfer() {
       return;
     }
     const me = getLoggedInUser();
-    const res = await fetch(`${API_BASE}/role/owner`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify([
-        { machine_id: MACHINE_ID, uuid: me?.uuid },
-        { uuid: newUuid, case_int_id: Number(caseId) },
-      ]),
-    });
+    const res = await auditedCaseWrite("transfer", { machine_id: MACHINE_ID, uuid: me?.uuid },
+      { targetUuid: newUuid, caseIntID: Number(caseId) }, "role/owner", "PUT",
+      { uuid: newUuid, case_int_id: Number(caseId) });
     logApi(res, "PUT /role/owner");
     if (!res.ok) {
       // Surface the server's own message: changeOwner answers 404 for an unknown
@@ -2540,11 +2531,8 @@ async function retrieveSelectedCase() {
 
   try {
     const me = getLoggedInUser();
-    const res = await fetch(`${API_BASE}/case/undelete/${Number(caseId)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify([{ machine_id: MACHINE_ID, uuid: me?.uuid }]),
-    });
+    const res = await auditedCaseWrite("restore", { machine_id: MACHINE_ID, uuid: me?.uuid },
+      { caseIntID: Number(caseId) }, `case/undelete/${Number(caseId)}`, "POST");
     logApi(res, "POST /case/undelete/:id");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -2596,14 +2584,8 @@ async function deleteSelectedCase() {
 
   try {
     const me = getLoggedInUser();
-    const res = await fetch(`${API_BASE}/case/delete/${Number(caseId)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify([
-        { machine_id: MACHINE_ID, uuid: me?.uuid, caseIntID: Number(caseId) },
-        { case_int_id: Number(caseId) },
-      ]),
-    });
+    const res = await auditedCaseWrite("delete", { machine_id: MACHINE_ID, uuid: me?.uuid, caseIntID: Number(caseId) },
+      { caseIntID: Number(caseId) }, `case/delete/${Number(caseId)}`, "POST", { case_int_id: Number(caseId) });
     logApi(res, "POST /case/delete/:id");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -3381,26 +3363,13 @@ if (filterSel) filterSel.addEventListener("change", () => applyClientFilters());
       return;
     }
 
-    const requestData = [
-      {
-        machine_id: MACHINE_ID,
-        uuid: user.uuid,
-        caseIntID: caseObj.id,
-      },
-      { case_id: newCaseName },
-    ];
-
     confirmRenameBtn.disabled = true;
     try {
-      const response = await fetch(
-        `${API_BASE}/case/rename/${caseObj.id}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(requestData),
-        }
-      );
-      logApi(response, 'POST /case/rename/:id');
+      const response = await auditedCaseWrite("rename",
+        { machine_id: MACHINE_ID, uuid: user.uuid, caseIntID: caseObj.id },
+        { caseIntID: Number(caseObj.id), name: newCaseName },
+        `case/rename/${caseObj.id}`, "POST", { case_id: newCaseName });
+      logApi(response, 'POST /case/activity/rename');
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -5334,14 +5303,11 @@ export async function postNewStatus(caseObj, newStatus) {
     },
   ];
 
-  const res = await fetch(
-    `${API_BASE}/additionalcasedetails`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }
-  );
+  const res = await auditedCaseWrite("details", body[0], {
+    caseIntID: Number(caseIntID),
+    changes: { new_status: newStatus },
+    initial: body[1],
+  }, "additionalcasedetails", "POST", body[1]);
   logApi(res, 'POST /additionalcasedetails');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   await createCaseHistory(caseIntID, newStatus);

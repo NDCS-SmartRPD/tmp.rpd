@@ -3,6 +3,8 @@ import { setupAppSidebar } from "../shared/appSidebar.js";
 import { API_BASE, MACHINE_ID, getLoggedInUser } from "../shared/api.js";
 import { returnToCaseList as goToCaseList } from "../shared/caseLinks.js";
 import { getAppBasePath } from "../shared/pageContext.js";
+import { readShareToken } from "../shared/shareSession.js";
+import { reportCaseActivity } from "../shared/caseActivitySignal.js";
 
 const NOTES_STORAGE_KEY = "smartrpd_clinical_notes";
 
@@ -24,6 +26,8 @@ async function populateCaseName() {
   if (!footerCaseName) return;
 
   const user = getLoggedInUser();
+  const shareToken = readShareToken();
+  if (shareToken) document.querySelector("[data-case-activity]")?.remove();
   const caseId = getDecodedCaseId();
   if (!caseId) {
     footerCaseName.textContent = "Viewer";
@@ -31,22 +35,26 @@ async function populateCaseName() {
   }
 
   footerCaseName.textContent = String(caseId);
-  if (!user?.uuid) return;
+  if (!shareToken && !user?.uuid) return;
 
   try {
     const response = await fetch(`${API_BASE}/case/get/${caseId}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(shareToken ? { Authorization: `Bearer ${shareToken}` } : {}),
+      },
       body: JSON.stringify([
         {
           machine_id: MACHINE_ID,
-          uuid: user.uuid,
+          uuid: shareToken ? undefined : user.uuid,
           caseIntID: caseId,
         },
       ]),
     });
     if (!response.ok) return;
     const detail = await response.json();
+    reportCaseActivity(caseId, "Case opened", "reported", shareToken);
     const label = detail?.case_id ? `${caseId} : ${detail.case_id}` : String(caseId);
     footerCaseName.textContent = label;
   } catch (error) {

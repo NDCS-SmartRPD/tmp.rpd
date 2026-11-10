@@ -1,7 +1,7 @@
 // 引入加密解密函数
 import { lol } from './crypt.js';
 import { logApi } from "./apiLog.js";
-import { API_BASE } from "./api.js";
+import { API_BASE, callerIdentity } from "./api.js";
 
 // DOM elements resolve lazily (bindDom) so this module imports cleanly on pages
 // where the widget is injected after scripts run, or isn't present at all.
@@ -287,17 +287,17 @@ function displayMessages() {
 async function createNote(content, imageBase64 = null) {
     if (!caseId) return;
     try {
-        const response = await fetch(`${API_BASE}/notes/create`, {
+        const response = await fetch(`${API_BASE}/case/activity/note`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                case_int_id: caseId,
-                author_username: currentUsername(),
+            body: JSON.stringify([callerIdentity(), {
+                caseIntID: Number(caseId),
                 content: content || null,
-                image_base64: imageBase64 || null,
-            })
+                image: imageBase64 || null,
+                operation: crypto.randomUUID(),
+            }])
         });
-        logApi(response, 'POST /notes/create');
+        logApi(response, 'POST /case/activity/note');
         if (!response.ok) {
             console.error('❌ Failed to create note:', response.status);
         }

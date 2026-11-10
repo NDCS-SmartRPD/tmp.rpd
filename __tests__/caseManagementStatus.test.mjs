@@ -51,6 +51,9 @@ function stubFetch({ getAllResponse, writeResponse, roleResponse, alertsResponse
     calls.push({ url: String(url), body: JSON.parse(options.body) });
     if (String(url) === GETALL_URL) return getAllResponse ?? jsonResponse([]);
     if (String(url) === WRITE_URL) return writeResponse ?? jsonResponse({ ok: true });
+    if (String(url).endsWith("/case/activity/details")) {
+      return { ...jsonResponse(null, 404), headers: { get: () => "text/html" } };
+    }
     if (String(url) === ROLE_URL) return roleResponse ?? jsonResponse([]);
     if (String(url) === ALERTS_URL) return alertsResponse ?? jsonResponse({ ok: true });
     return jsonResponse({}, 404);

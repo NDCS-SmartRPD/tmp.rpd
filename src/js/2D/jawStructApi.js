@@ -1,7 +1,7 @@
 /**
  * Jaw-struct fetch/save wrappers, mirroring clinicalInfo.js: same base, MACHINE_ID and
  * [{machine_id, uuid, caseIntID}, {case_id, ...}] payload. Fetch is POST
- * /jawstruct/l2/getall, save is POST /jawstruct/l2 (upsert per case+type).
+ * /jawstruct/l2/getall. Web saves use the audited per-jaw route.
  */
 import { encodeJawStructBase64 } from "./jawStructCodec.js";
 import { API_BASE, MACHINE_ID } from "../shared/api.js";
@@ -68,15 +68,17 @@ export async function fetchJawStruct(caseIntID, uuid, { retries = 2, retryDelayM
 
 /**
  * Save one jaw's struct text (already base64-encoded) back to the backend.
- * POST /jawstruct/l2 upserts on (case_id, type) — see file-level note.
+ * The server commits the jaw update and its audit event together.
  */
 export async function saveJawStructJaw(caseIntID, uuid, type, base64Data, filename) {
   const payload = buildPayload(caseIntID, uuid, {
+    caseIntID: Number(caseIntID),
+    operation: crypto.randomUUID(),
     type,                                  // "upper_jaw" | "lower_jaw"
     filename: filename || (type === "upper_jaw" ? "JawUpper_Struct_L2.txt" : "JawLower_Struct_L2.txt"),
     data: base64Data,
   });
-  return postJson("/jawstruct/l2", payload);
+  return postJson("/case/activity/design-save", payload);
 }
 
 /**

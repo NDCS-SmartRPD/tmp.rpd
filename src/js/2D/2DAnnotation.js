@@ -4,6 +4,7 @@
  */
 
 import { lol } from "../shared/crypt.js";
+import { reportCaseActivity } from "../shared/caseActivitySignal.js";
 import { toggleChat } from "../shared/chat.js";
 import { returnToCaseList as goToCaseList } from "../shared/caseLinks.js";
 import { SVG_NS } from "./constants.js";
@@ -308,7 +309,7 @@ export function recordHistoryCheckpoint() {
   return changed;
 }
 
-export function recordHistoryIfChanged(beforeSignature) {
+export function recordHistoryIfChanged(beforeSignature, activityAction = "Design edited locally") {
   if (history.restoring) return false;
   const afterSnapshot = cloneStateForHistory();
   const afterSignature = JSON.stringify(afterSnapshot);
@@ -317,7 +318,10 @@ export function recordHistoryIfChanged(beforeSignature) {
   }
   const changed = pushHistorySnapshot(afterSnapshot);
   updateUndoRedoButtons();
-  if (changed) runAutosaveHooks();
+  if (changed) {
+    if (activityAction) reportCaseActivity(state.caseIntID, activityAction);
+    runAutosaveHooks();
+  }
   return changed;
 }
 
@@ -365,6 +369,7 @@ export async function undoWorkflow() {
   updateUndoRedoButtons();
   noteDesignChanged();
   setMessage("Undo applied.", false);
+  reportCaseActivity(state.caseIntID, "Design edit undone");
 }
 
 export async function redoWorkflow() {
@@ -384,6 +389,7 @@ export async function redoWorkflow() {
   updateUndoRedoButtons();
   noteDesignChanged();
   setMessage("Redo applied.", false);
+  reportCaseActivity(state.caseIntID, "Design edit redone");
 }
 
 function bindHistoryControls() {
@@ -1231,7 +1237,16 @@ export async function postJawStructToServer() {
     return { ok: false, reason: "no-auth" };
   }
   console.log(`[2D-post] posting 2D structure for case ${state.caseIntID} (upper + lower)…`);
-  const res = await saveJawStructFromState(state.caseIntID, loggedInUser.uuid, state);
+  let res;
+  try {
+    res = await saveJawStructFromState(state.caseIntID, loggedInUser.uuid, state);
+  } catch (error) {
+    reportCaseActivity(state.caseIntID, "Design save result unknown", "unknown");
+    throw error;
+  }
+  if (!res?.upper?.ok || !res?.lower?.ok) {
+    reportCaseActivity(state.caseIntID, "Design save failed", "failed");
+  }
   console.log("[2D-post] post result:", {
     upper: res?.upper?.ok ? `ok (${res.upper.status})` : `FAILED (${res?.upper?.status})`,
     lower: res?.lower?.ok ? `ok (${res.lower.status})` : `FAILED (${res?.lower?.status})`,
@@ -1404,6 +1419,7 @@ function bindProposedDesignButton() {
 
     const placed = await placeProposedDesign();
     if (!placed.length) {
+      reportCaseActivity(state.caseIntID, "Load proposed 2D design", "failed");
       setMessage("No proposed design is available for this case.", true);
       return;
     }
@@ -1413,7 +1429,8 @@ function bindProposedDesignButton() {
     renderJaws();
     setMessage(`Placed the proposed design (${placed.join(", ")}).`, false);
     toast.success("Design placed");
-    recordHistoryIfChanged(historyBefore);
+    recordHistoryIfChanged(historyBefore, null);
+    reportCaseActivity(state.caseIntID, "Load proposed 2D design");
   };
 
   btn.addEventListener("click", () => {
@@ -1421,6 +1438,7 @@ function bindProposedDesignButton() {
     loadProposedDesign()
       .catch((err) => {
         console.error("[proposedDesign] could not place the proposal", err);
+        reportCaseActivity(state.caseIntID, "Load proposed 2D design", "failed");
         setMessage("Could not build a design proposal for this case.", true);
       })
       .finally(() => {
@@ -1825,7 +1843,9 @@ function init() {
 
   // Start the network work before the feature modules download, so requests overlap the
   // imports instead of waterfalling. Only the START is hoisted; apply/render still wait.
-  fetchCaseDetail(); // shared /case/get — also reused by preview3D
+  fetchCaseDetail().then(detail => {
+    if (detail) reportCaseActivity(state.caseIntID, "Case opened");
+  }); // shared /case/get — also reused by preview3D
   const loggedInUser = getLoggedInUser();
   // Guests still need the design or the arch renders empty, so fall back to VIEWER_UUID.
   // Save stays gated on loggedInUser.uuid, keeping them read-only.

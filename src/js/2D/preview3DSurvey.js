@@ -3,6 +3,7 @@
 
 import { state } from "./2DAnnotation.js";
 import { toast } from "../shared/toast.js";
+import { callerIdentity } from "../shared/api.js";
 import {
   THREE,
   preview3DState,
@@ -899,9 +900,7 @@ async function saveSurveyAngle(jaw, btn) {
     btn.textContent = "SAVING…";
   }
 
-  // Existing survey-angle save path: PUT /case/:id replaces the whole row, so
-  // read fresh and abort rather than write defaults that can rename the case or
-  // clobber the other jaw.
+  // Refresh the preview cache. The audited write itself updates only this jaw.
   const fresh = await fetchCaseData({ force: true });
   if (fresh?.case_id) preview3DState.caseData = fresh;
   const current = preview3DState.caseData;
@@ -927,37 +926,27 @@ async function saveSurveyAngle(jaw, btn) {
     updated.lower_insertion_angle_z = z;
   }
 
-  const auth = surveyLockAuth();
-  const caseBody = {
-    // The case's name. Never defaulted - an empty string here wipes it (guarded above).
-    case_id: updated.case_id,
-    upper_insertion_angle_x: Number(updated.upper_insertion_angle_x) || 0,
-    upper_insertion_angle_y: Number(updated.upper_insertion_angle_y) || 0,
-    upper_insertion_angle_z: Number(updated.upper_insertion_angle_z) || 0,
-    lower_insertion_angle_x: Number(updated.lower_insertion_angle_x) || 0,
-    lower_insertion_angle_y: Number(updated.lower_insertion_angle_y) || 0,
-    lower_insertion_angle_z: Number(updated.lower_insertion_angle_z) || 0,
-    process_upper: Number(updated.process_upper) || 0,
-    process_lower: Number(updated.process_lower) || 0,
-  };
-
-  const path = `/case/${state.caseIntID}`;
+  const path = "/case/activity/survey-angle";
   if (btn) btn.textContent = "SURVEYING...";
   const t0 = performance.now();
+  let angleSaved = false;
   try {
     const res = await fetch(`${SMARTRPD_API_BASE}${path}`, {
-      method: "PUT",
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify([auth, caseBody]),
+      body: JSON.stringify([callerIdentity(), {
+        caseIntID: Number(state.caseIntID), jaw, vector: [x, y, z], operation: crypto.randomUUID(),
+      }]),
     });
     const dt = Math.round(performance.now() - t0);
     const tag = res.ok ? "✓" : "✕";
-    console.log(`[preview3D] ${tag} PUT ${path} status=${res.status} ${dt}ms`);
+    console.log(`[preview3D] ${tag} POST ${path} status=${res.status} ${dt}ms`);
     if (!res.ok) {
       // A rejected write (an expired session 401s here) must not look like a save.
       toast?.error?.(`Survey angle not saved (HTTP ${res.status}).`);
       return false;
     }
+    angleSaved = true;
     preview3DState.caseData = updated;
 
     if (btn) btn.textContent = "COMPUTING...";
@@ -977,8 +966,9 @@ async function saveSurveyAngle(jaw, btn) {
     toast?.success?.(`${jaw === "upper" ? "Upper" : "Lower"} survey angle applied.`);
     return true;
   } catch (err) {
-    console.error(`[preview3D] ✕ PUT ${path} failed`, err);
-    toast?.error?.(`Survey angle failed. ${err.message || err}`);
+    console.error(`[preview3D] ✕ POST ${path} failed`, err);
+    toast?.error?.(angleSaved ? "Survey angle saved. The heatmap could not be updated." :
+      "Could not confirm whether the survey angle was saved.");
     return false;
   } finally {
     // Drops the placement arrow and resets the button back to SET SURVEY ANGLE.

@@ -5,6 +5,7 @@ import { confirmModal, toast } from "../shared/toast.js";
 import { API_BASE, MACHINE_ID, getLoggedInUser } from "../shared/api.js";
 import { toDateInputValue } from "../shared/timestamps.js";
 import { createCaseHistory } from "../shared/caseHistory.js";
+import { auditedCaseWrite } from "../shared/caseActivitySignal.js";
 
 // getLoggedInUser rather than ApiClient.js's shared VIEWER_UUID: these case
 // endpoints authenticate as the signed-in user.
@@ -183,17 +184,18 @@ async function patchAdditionalCaseDetails(caseIntID, changes) {
   if (!user?.uuid || caseIntID == null) return false;
   const { ok, detail } = await fetchAdditionalCaseDetails(caseIntID);
   if (!ok) return false;
-  const res = await postJson("additionalcasedetails", [
+  const legacy = {
+    assigned_to: detail?.assigned_to ?? null,
+    due_date: detail?.due_date ?? null,
+    comments: detail?.comments ?? null,
+    new_status: detail?.new_status ?? null,
+    tooth_shade: detail?.tooth_shade ?? null,
+    ...changes,
+  };
+  const res = await auditedCaseWrite("details",
     { machine_id: MACHINE_ID, uuid: user.uuid, caseIntID },
-    {
-      assigned_to: detail?.assigned_to ?? null,
-      due_date: detail?.due_date ?? null,
-      comments: detail?.comments ?? null,
-      new_status: detail?.new_status ?? null,
-      tooth_shade: detail?.tooth_shade ?? null,
-      ...changes,
-    },
-  ]);
+    { caseIntID: Number(caseIntID), changes, initial: legacy },
+    "additionalcasedetails", "POST", legacy).catch(() => null);
   return res?.ok ?? false;
 }
 
