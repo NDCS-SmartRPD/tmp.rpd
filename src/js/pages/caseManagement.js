@@ -1471,7 +1471,6 @@ async function handleRowClick(caseId) {
     );
 
     displayCaseDetails(detail);
-    reportCaseActivity(caseId, "Case opened");
     await fetchThumbnails(caseId);
 
     // Selecting a row only previews it and must NOT reorder the list — the
