@@ -1,0 +1,161 @@
+.case-activity {
+  --ca-ink: #172c32;
+  --ca-muted: #4c6269;
+  --ca-line: #dbe7e5;
+  box-sizing: border-box;
+  width: min(46rem, calc(100% - 2rem));
+  max-width: none;
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  color: var(--ca-ink);
+  background: #f6faf9;
+  border: 1px solid var(--ca-line);
+  border-radius: 1.25rem;
+  box-shadow: 0 1.5rem 5rem #092e3450;
+  font-family: inherit;
+  text-align: start;
+}
+
+.case-activity[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.case-activity::backdrop { background: rgb(12 31 36 / 58%); }
+
+.case-activity .ca-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.875rem;
+  padding: clamp(0.875rem, 3vw, 1.5rem);
+  background: #fff;
+  border-block-end: 1px solid var(--ca-line);
+}
+
+.case-activity .ca-header-icon,
+.case-activity .ca-close {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.75rem;
+}
+
+.case-activity .ca-header-icon { background: #def3ec; color: #17604d; }
+
+.case-activity .ca-case {
+  margin: 0;
+  color: #17604d;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.case-activity h2 {
+  margin: 0.125rem 0;
+  font-size: clamp(1.2rem, 3vw, 1.65rem);
+  line-height: 1.2;
+}
+
+.case-activity #caseActivityDescription {
+  margin: 0;
+  color: var(--ca-muted);
+  font-size: 0.875rem;
+}
+
+.case-activity .ca-header form { margin: 0; }
+
+.case-activity .ca-close,
+.case-activity .ca-more {
+  color: var(--ca-ink);
+  background: #fff;
+  border: 1px solid #c4d6d2;
+  font: inherit;
+  cursor: pointer;
+}
+
+.case-activity .ca-close { font-size: 1.5rem; line-height: 1; }
+.case-activity button:hover { background: #eaf5f1; }
+.case-activity button:focus-visible { outline: 2px solid #17604d; outline-offset: 2px; }
+
+.case-activity .ca-body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: clamp(0.75rem, 3vw, 1.5rem);
+}
+
+.case-activity .ca-list {
+  display: grid;
+  gap: 0.625rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.case-activity .ca-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  align-items: start;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  overflow-wrap: anywhere;
+  background: #fff;
+  border: 1px solid var(--ca-line);
+  border-radius: 0.875rem;
+}
+
+.case-activity .ca-action { margin: 0; font-size: 0.95rem; line-height: 1.35; }
+.case-activity .ca-meta,
+.case-activity .ca-details,
+.case-activity .ca-vector { margin: 0.25rem 0 0; font-size: 0.825rem; }
+.case-activity .ca-meta,
+.case-activity .ca-time { color: var(--ca-muted); }
+.case-activity .ca-vector { font-variant-numeric: tabular-nums; }
+
+.case-activity .ca-entry-summary {
+  display: grid;
+  gap: 0.35rem;
+  justify-items: end;
+  text-align: end;
+}
+
+.case-activity .ca-time { font-size: 0.75rem; }
+.case-activity .ca-badge {
+  padding: 0.2rem 0.55rem;
+  border-radius: 1rem;
+  background: #f9eed6;
+  color: #744b12;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.case-activity .ca-badge[data-outcome="succeeded"] { background: #def3e7; color: #195840; }
+.case-activity .ca-badge[data-outcome="reported"] { background: #e8eff5; color: #37546a; }
+.case-activity .ca-badge[data-outcome="failed"] { background: #f9e5e5; color: #8e3131; }
+
+.case-activity .ca-status { margin: 0; padding: 1.5rem 0.75rem; text-align: center; color: var(--ca-muted); }
+.case-activity .ca-more { min-height: 2.75rem; padding: 0.5rem 1rem; border-radius: 0.75rem; }
+.case-activity .ca-more:not([hidden]) { display: block; margin: 0.875rem auto 0; }
+.case-activity .ca-more:disabled { opacity: 0.65; cursor: wait; }
+
+@media (max-width: 36rem) {
+  .case-activity { width: calc(100% - 1rem); max-height: calc(100dvh - 1rem); border-radius: 1rem; }
+  .case-activity .ca-entry { grid-template-columns: minmax(0, 1fr); gap: 0.5rem; padding: 0.75rem; }
+  .case-activity .ca-entry-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.65rem;
+    text-align: start;
+  }
+}
+
+@media (max-width: 22rem), (max-height: 26rem) {
+  .case-activity .ca-header { grid-template-columns: minmax(0, 1fr) auto; }
+  .case-activity .ca-header-icon { display: none; }
+}
