@@ -421,6 +421,7 @@ const BAR_SHAPE_LETTER = Object.freeze({
   "bar-t": "T",
   "bar-u": "U",
   "bar-y": "Y",
+  "bar-l": "L",
   [ROACH_CLASP_COMPONENT_ID]: "Y",
 });
 

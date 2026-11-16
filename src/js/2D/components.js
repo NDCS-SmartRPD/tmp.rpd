@@ -386,6 +386,17 @@ export const COMPONENT_CATALOG = [
     actionUponFailure: ACTION_UPON_FAILURE.PREVENT_PLACEMENT,
   },
   {
+    id: "bar-l",
+    label: "L Bar",
+    shortLabel: "LB",
+    icon: "../../assets/menu-icon/Bars/Retainer_L-Bar.png",
+    tab: "bars",
+    requiresPresence: true,
+    requiresMissing: false,
+    conflictsWith: [],
+    actionUponFailure: ACTION_UPON_FAILURE.PREVENT_PLACEMENT,
+  },
+  {
     id: "plate-prox",
     label: "Lingual Plate",
     shortLabel: "LP",

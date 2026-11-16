@@ -35,6 +35,7 @@ export const RETAINER_BAR_CATEGORY = new Map([
   [3, "bar-y"], // inferred
   [4, "bar-t"], // inferred
   // 5 (rb_R) has no web catalog id (RPI is commented out in components.js) -> unmapped
+  [6, "bar-l"], // inferred (lower 36/46, distal L-bar)
 ]);
 
 // Mesh_Type { no_mesh=0, hole_mesh=1, tori_mesh=2, strip_mesh=3, cross_mesh=4, plate_mesh=5 }
