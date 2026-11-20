@@ -2746,8 +2746,22 @@ button.upload3d-row {
 
 .component-items {
   display: grid;
-  gap: 10px;
+  gap: 5px;
   min-width: 0;
+}
+
+.component-items[data-tab="mesh"],
+.component-items[data-tab="bars"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(3, auto);
+  grid-auto-flow: column;
+  column-gap: 6px;
+}
+
+.component-items[data-tab="mesh"] .component-item,
+.component-items[data-tab="bars"] .component-item {
+  padding: 3px 4px;
+  gap: 6px;
 }
 
 .major-columns {
@@ -2781,7 +2795,7 @@ button.upload3d-row {
 
 .major-column-items {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .component-item {
@@ -2794,7 +2808,7 @@ button.upload3d-row {
   border: 1px solid transparent;
   background: transparent;
   color: var(--muted);
-  padding: 8px 10px;
+  padding: 5px 10px;
   cursor: pointer;
   min-width: 0;
   min-height: 42px;
@@ -3192,7 +3206,7 @@ image.acrylic-flange-knockout {
   -webkit-filter: url(#tint-tooth-missing);
   filter: url(#tint-tooth-missing);
 }
-.tooth.is-locked { opacity: 0.88; }
+/*.tooth.is-locked { opacity: 0.88; } */
 
 /* Range selection targets missing teeth, so it must win back the missing-tooth fade. */
 .tooth.tooth-range-selected .tooth-image {
@@ -3534,7 +3548,9 @@ image.acrylic-flange-knockout {
 
   .arch-panel > .jaw-combined-canvas {
     grid-column: 1;
-    grid-row: 1;
+    /* grid-row: 1; */
+    grid-row: 1 / -1;
+    margin-bottom: 80px;
     min-height: 0;
     /* Clip horizontally only, or the scaled arches steal clicks in the tools
        column. clip-path, not overflow:hidden — the lower arch must spill down. */

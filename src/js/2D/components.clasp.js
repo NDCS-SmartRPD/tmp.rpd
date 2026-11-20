@@ -258,17 +258,25 @@ const CLASP_CIRC_PLACEMENT_IMAGE_SIZE_BY_TOOTH = Object.freeze({
   },
 
   "47": {
-    distal_buccal: { width: 135, height: 125 },
-    mesial_buccal: { width: 170, height: 150 },
-    distal_lingual: { width: 115, height: 137 },
-    mesial_lingual: { width: 115, height: 115 },
+    // distal_buccal: { width: 135, height: 125 },
+    distal_buccal: { width: 155.2, height: 142.4 },
+    // mesial_buccal: { width: 170, height: 150 },
+    mesial_buccal: { width: 201.6, height: 164.7 },
+    // distal_lingual: { width: 115, height: 137 },
+    distal_lingual: { width: 133.4, height: 149.5 },
+    // mesial_lingual: { width: 115, height: 115 },
+    mesial_lingual: { width: 128.7, height: 128 },
   },
 
   "48": {
-    distal_buccal: { width: 115, height: 110 },
-    mesial_buccal: { width: 145, height: 145 },
-    distal_lingual: { width: 115, height: 137 },
-    mesial_lingual: { width: 102, height: 125 },
+    // distal_buccal: { width: 115, height: 110 },
+    distal_buccal: { width: 134.6, height: 128.2 },
+    // mesial_buccal: { width: 145, height: 145 },
+    mesial_buccal: { width: 171.4, height: 158.6 },
+    // distal_lingual: { width: 115, height: 137 },
+    distal_lingual: { width: 133.3, height: 149.3 },
+    // mesial_lingual: { width: 102, height: 125 },
+    mesial_lingual: { width: 116, height: 141.6 },
   },
 });
 /**
@@ -615,17 +623,25 @@ const RING_CLASP_IMAGE_SIZE_OVERRIDE_BY_TOOTH = Object.freeze({
   },
 
   "47": {
-    distal_buccal: { width: 205, height: 170 },
-    mesial_buccal: { width: 180, height: 160 },
-    distal_lingual: { width: 175, height: 160 },
-    mesial_lingual: { width: 185, height: 170 },
+    // distal_buccal: { width: 205, height: 170 },
+    distal_buccal: { width: 225.9, height: 186.5 },
+    // mesial_buccal: { width: 180, height: 160 },
+    mesial_buccal: { width: 196.4, height: 174 },
+    // distal_lingual: { width: 175, height: 160 },
+    distal_lingual: { width: 190.5, height: 174.1 },
+    // mesial_lingual: { width: 185, height: 170 },
+    mesial_lingual: { width: 200.9, height: 184.1 },
   },
 
   "48": {
-    distal_buccal: { width: 175, height: 150 },
-    mesial_buccal: { width: 160, height: 165 },
-    distal_lingual: { width: 160, height: 170 },
-    mesial_lingual: { width: 175, height: 155 },
+    // distal_buccal: { width: 175, height: 150 },
+    distal_buccal: { width: 189.9, height: 163.8 },
+    // mesial_buccal: { width: 160, height: 165 },
+    mesial_buccal: { width: 171.9, height: 177.9 },
+    // distal_lingual: { width: 160, height: 170 },
+    distal_lingual: { width: 172.8, height: 184.1 },
+    // mesial_lingual: { width: 175, height: 155 },
+    mesial_lingual: { width: 187.4, height: 166.7 },
   },
 });
 
