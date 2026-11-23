@@ -24,6 +24,8 @@ const assert = require('node:assert/strict');
     });
     let unavailable = false;
     let dense = false;
+    let activityCalls = 0;
+    let activityUnavailable = false;
     await page.route('**/api/smartrpd/**', async route => {
       const path = new URL(route.request().url()).pathname;
       let body;
@@ -41,10 +43,14 @@ const assert = require('node:assert/strict');
       } else if (path.endsWith('/user/monitoring/get')) {
         assert.equal(route.request().postDataJSON()[1].targetUserUuid, 'recent');
         body = { user: { uuid: 'recent', lastLoginAt: '2026-11-18T00:00:00Z', lastContactAt: '2026-11-18T15:59:59Z', loggedOut: false, loginState: 'within_timeout' } };
-      } else if (path.endsWith('/user/activity/get')) body = { events: [
-        { id: '9', caseId: '123', action: 'Save 2D design', outcome: 'succeeded', source: 'server', occurredAt: '2026-11-18T00:00:00Z' },
-      ], nextCursor: null };
-      else body = [];
+      } else if (path.endsWith('/user/activity/get')) {
+        activityCalls++;
+        if (activityUnavailable) return route.fulfill({ status: 503, json: {} });
+        const older = Boolean(route.request().postDataJSON()[1].before);
+        body = { events: [
+        { id: older ? '8' : '9', caseId: '123', action: 'Save 2D design', outcome: 'succeeded', source: 'server', occurredAt: '2026-11-18T00:00:00Z' },
+      ], nextCursor: older ? null : 'recent:9' };
+      } else body = [];
       if (dense && path.endsWith('/user/getall')) body = Array.from({ length: 40 }, (_, i) => ({
         uuid: `user-${i}`, username: `User ${i}`, email: `user${i}@example.test`, deleted: 0, is_admin: 0,
       }));
@@ -81,9 +87,28 @@ const assert = require('node:assert/strict');
     assert.equal(await page.locator('#userTableBody tr[data-uuid]').count(), 0);
     await page.locator('#contactTimestampType').selectOption('lastContactAt');
     await page.locator('#userTableBody tr[data-uuid]').click();
-    await page.waitForFunction(() => document.querySelector('#userMonitoringDetail ol').textContent.includes('Save 2D design'));
+
     await page.waitForFunction(() => document.querySelector('#userMonitoringDetail').textContent.includes('0 (not explicitly logged out)'));
-    assert.equal(await page.locator('#userMonitoringDetail button').isVisible(), false);
+    assert.equal(activityCalls, 0);
+    await page.locator('#userMonitoringDetail button').click();
+    await page.waitForFunction(() => document.querySelector('#userActivityTimeline ol')?.textContent.includes('Save 2D design'));
+    assert.equal(await page.locator('#userOverviewPanel').isVisible(), false);
+    assert.equal(await page.locator('#userActivityPanel').isVisible(), true);
+    assert.equal(await page.locator('#activityUserSelect').inputValue(), 'recent');
+    await page.locator('#userActivityTimeline button').click();
+    await page.waitForFunction(() => document.querySelectorAll('#userActivityTimeline li').length === 2);
+    assert.equal(await page.locator('#userActivityTimeline button').isVisible(), false);
+    await page.screenshot({ path: 'tools/user-activity-tab.png', fullPage: true, animations: 'disabled' });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: 'tools/user-activity-tab-mobile.png', fullPage: true, animations: 'disabled' });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    activityUnavailable = true;
+    await page.locator('#refreshUserActivity').click();
+    await page.waitForFunction(() => document.querySelector('#userActivityTimeline').textContent.includes('Activity is unavailable'));
+    await page.locator('#userOverviewTab').click();
+    assert.equal(await page.locator('#contactFrom').isEnabled(), true);
+    assert.equal(await page.locator('#contactFrom').inputValue(), '2026-11-18T23:59');
+    await page.locator('#userTableBody tr[data-uuid]').click();
     await page.screenshot({ path: 'tools/user-monitoring-desktop.png', fullPage: true, animations: 'disabled' });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: 'tools/user-monitoring-mobile.png', fullPage: true, animations: 'disabled' });

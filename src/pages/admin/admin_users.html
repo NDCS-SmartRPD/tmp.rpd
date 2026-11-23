@@ -111,6 +111,11 @@
           </button>
         </div>
 
+        <div class="au-view-tabs" id="userViewTabs" role="tablist" aria-label="User management views">
+          <button type="button" id="userOverviewTab" role="tab" aria-controls="userOverviewPanel" aria-selected="true">User Overview</button>
+          <button type="button" id="userActivityTab" role="tab" aria-controls="userActivityPanel" aria-selected="false" tabindex="-1">User Activity</button>
+        </div>
+        <section id="userOverviewPanel" class="au-overview-panel" role="tabpanel" aria-labelledby="userOverviewTab">
         <div class="cm-toolbar au-toolbar" id="adminToolbar">
           <div class="cm-chip cm-chip-filter">
             <i class="fa-regular fa-calendar" aria-hidden="true"></i>
@@ -229,6 +234,17 @@
             </tbody>
           </table>
         </div>
+        </section>
+        <section id="userActivityPanel" class="au-activity-panel" role="tabpanel" aria-labelledby="userActivityTab" hidden>
+          <h2>User Activity</h2>
+          <p>Review recorded actions across cases for a selected user.</p>
+          <div class="au-activity-controls">
+            <label for="activityUserSelect">User</label>
+            <select id="activityUserSelect"><option value="">Select a user</option></select>
+            <button type="button" id="refreshUserActivity" class="cm-btn cm-btn-secondary">Refresh activity</button>
+          </div>
+          <section id="userActivityTimeline" aria-label="Selected user activity"><p>Select a user to view their activity.</p></section>
+        </section>
       </main>
 
       <!-- Right column: full-height user detail pane. -->

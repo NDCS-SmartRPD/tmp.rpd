@@ -106,6 +106,72 @@ export function showUserMonitoring(user) {
     for (const element of [login, contact, usage, flag, state]) element.textContent = `${element.textContent.split(':')[0]}: Unavailable`;
   });
   add('p', 'API contact includes login, logout and supported API calls; it does not indicate that the user is online. Dates shown in SGT.');
+  const activityButton = add('button', 'View user activity');
+  activityButton.type = 'button';
+  activityButton.className = 'cm-btn cm-btn-secondary';
+  activityButton.addEventListener('click', () => {
+    document.getElementById('activityUserSelect').value = user.uuid;
+    switchUserView('activity');
+    document.getElementById('activityUserSelect').focus();
+  });
+}
+
+let activityRequest = 0;
+function switchUserView(view) {
+  const activity = view === 'activity';
+  const page = document.querySelector('.au-page');
+  page.classList.toggle('is-activity', activity);
+  page.classList.remove('show-details');
+  for (const name of ['Overview', 'Activity']) {
+    const selected = (name === 'Activity') === activity;
+    const tab = document.getElementById(`user${name}Tab`);
+    tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+    document.getElementById(`user${name}Panel`).hidden = !selected;
+  }
+  if (activity) showUserActivity();
+  else activityRequest++; // Ignore results arriving after leaving the activity view.
+}
+
+export function setActivityUsers(users) {
+  const select = document.getElementById('activityUserSelect');
+  const previous = select.value;
+  select.replaceChildren(new Option('Select a user', ''));
+  for (const user of [...users].sort((a, b) => a.username.localeCompare(b.username))) {
+    select.add(new Option(`${user.username || user.uuid}${user.email ? ` (${user.email})` : ''}${user.deleted ? ' — Deactivated' : ''}`, user.uuid));
+  }
+  select.value = previous;
+}
+
+export function initUserViews() {
+  const tabs = ['userOverviewTab', 'userActivityTab'].map(id => document.getElementById(id));
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => switchUserView(index ? 'activity' : 'overview'));
+    tab.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? 1 : 1 - index;
+      tabs[next].focus();
+      switchUserView(next ? 'activity' : 'overview');
+    });
+  });
+  document.getElementById('activityUserSelect').addEventListener('change', showUserActivity);
+  document.getElementById('refreshUserActivity').addEventListener('click', showUserActivity);
+}
+
+function showUserActivity() {
+  const request = ++activityRequest;
+  const uuid = document.getElementById('activityUserSelect').value;
+  const root = document.getElementById('userActivityTimeline');
+  root.replaceChildren();
+  const add = (tag, text) => {
+    const el = document.createElement(tag);
+    el.textContent = text;
+    root.append(el);
+    return el;
+  };
+  if (!uuid) { add('p', 'Select a user to view their activity.'); return; }
+  add('h3', document.getElementById('activityUserSelect').selectedOptions[0].textContent);
   add('h3', 'Actions performed across cases');
   const status = add('p', 'Loading activity…');
   status.setAttribute('role', 'status');
@@ -115,12 +181,14 @@ export function showUserMonitoring(user) {
   more.className = 'cm-btn cm-btn-secondary';
   more.hidden = true;
   let before = null;
+  let loaded = 0;
+  const count = add('p', '0 activity entries loaded');
   async function load() {
     more.disabled = true;
     status.textContent = 'Loading activity…';
     try {
-      const page = await apiPost('user/activity/get', { targetUserUuid: user.uuid, before });
-      if (request !== selectedRequest) return;
+      const page = await apiPost('user/activity/get', { targetUserUuid: uuid, before });
+      if (request !== activityRequest) return;
       for (const event of page.events) {
         const item = document.createElement('li');
         const title = document.createElement('strong');
@@ -136,13 +204,17 @@ export function showUserMonitoring(user) {
         item.append(title, detail);
         list.append(item);
       }
+      loaded += page.events.length;
+      count.textContent = `${loaded} activity ${loaded === 1 ? 'entry' : 'entries'} loaded`;
       before = page.nextCursor;
+      more.textContent = 'Load older activity';
       more.hidden = !before;
       status.textContent = list.children.length ? '' : 'No recorded activity. Tracking began at rollout; older and uninstrumented actions are not available.';
     } catch (error) {
-      if (request !== selectedRequest) return;
+      if (request !== activityRequest) return;
       if (error.status === 401 || error.status === 403) {
         list.replaceChildren();
+        count.textContent = 'Activity unavailable';
         more.hidden = true;
         status.textContent = 'Administrator access is required. Sign in again.';
       } else {

@@ -5,7 +5,7 @@
 // The mutation payloads are UNVERIFIED against a real admin account; every shape
 // lives in the api object + normalizeUser below so a correction stays one line.
 
-import { loadMonitoring, showUserMonitoring, formatMonitoringTime, matchesMonitoring, loginStateLabels, communicationUsage, formatUsage, updateUsageDetail } from "./userMonitoring.js";
+import { loadMonitoring, showUserMonitoring, formatMonitoringTime, matchesMonitoring, loginStateLabels, communicationUsage, formatUsage, updateUsageDetail, initUserViews, setActivityUsers } from "./userMonitoring.js";
 
 import { toast, confirmModal, attachThemedCalendar } from "../shared/toast.js";
 import { initAdminShell, setStatLinkState } from "./adminShell.js";
@@ -308,6 +308,9 @@ function closeUserDetail() {
 // ---------------------------------------------------------------------------
 
 function showGate(message) {
+  document.getElementById("userViewTabs").hidden = true;
+  document.getElementById("userOverviewPanel").hidden = true;
+  document.getElementById("userActivityPanel").hidden = true;
   document.getElementById("contactFilterPanel").classList.add("hidden");
   document.getElementById("userResultCount").classList.add("hidden");
   document.getElementById("adminToolbar").classList.add("hidden");
@@ -335,6 +338,7 @@ async function loadUsers() {
     // First real admin run: surface the row shape once so normalizeUser can be
     // corrected quickly if the field names differ.
     if (rows[0]) console.log("[admin] user row keys:", Object.keys(rows[0]));
+    setActivityUsers(rows.filter(r => r && typeof r === "object").map(normalizeUser));
 
     let monitoring = new Map();
     let monitoringAvailable = false;
@@ -544,6 +548,7 @@ function refreshDetailIfSelected(uuid) {
 document.addEventListener("DOMContentLoaded", () => {
   const me = initAdminShell({ onDenied: showGate });
   if (!me) return;
+  initUserViews();
 
   // Bell dot starts hidden — renderUserStats lights it when pending signup
   // requests are in the loaded data.

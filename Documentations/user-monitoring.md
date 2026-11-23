@@ -2,9 +2,11 @@
 
 ## Delivered scope
 
-The Admin Users page shows last successful login, last API contact, an inclusive
-timestamp range in Asia/Singapore, login-state filtering, and a paginated timeline of actions
-performed by the selected user across cases. Registration-date filtering remains
+The Admin Users page has two tabs. User Overview shows last successful login,
+last API contact, an inclusive timestamp range in Asia/Singapore, login-state
+filtering and account management. User Activity provides a separate, full-width
+paginated timeline of actions performed by a selected user across cases, with
+its own user selector and refresh control. Registration-date filtering remains
 separate. Select Last API contact or Last successful login as the timestamp type.
 Timestamp and login-state controls are under More filters; communication usage
 and recency remain visible. The result count shows the number matching all filters
@@ -14,6 +16,15 @@ on short windows the main pane can scroll to accommodate expanded filters.
 Opening a user fetches fresh communication details for that UUID, including the
 raw logged-out flag and a derived login state. Reporting endpoints require a current administrator login and reject
 bearer/share credentials and disabled administrators.
+
+Use View user activity in the overview detail panel to open the Activity tab
+with that user selected. Opening overview details does not fetch case activity.
+Activity requests start only when the Activity view is used, and late results
+from another selection/view are ignored. Overview filters are preserved across
+tab changes. An activity failure stays in the Activity view; it does not disable
+communication filtering. Both tabs support keyboard navigation. This view split
+uses the existing APIs and requires only a frontend deployment, with no additional
+SQL or API changes.
 
 ## Meaning of last communication
 
