@@ -570,18 +570,22 @@ export function pruneInvalidBarPlacementsInJaw(teethById, jaw) {
 }
 
 // Resolve bar asset path for component/tooth/surface.
-export function getBarPlacementAssetReference(componentId, toothId, surface) {
+// export function getBarPlacementAssetReference(componentId, toothId, surface) {
+export function getBarPlacementAssetReference(componentId, toothId, surface, tip) {
   const templateToothId = getComponentTemplateToothId(toothId);
   const letter = BAR_SHAPE_LETTER[String(componentId || "").toLowerCase()] || "I";
   const match = BAR_SURFACE_RE.exec(String(surface || "").toLowerCase());
+  const tipSuffix = letter === "L" ? `_tip_${tip === "distal" ? "distal" : "mesial"}` : "";
 
   if (!match) {
-    return `${COMPONENT_ASSET_BASE}/${templateToothId}/bars/${templateToothId}_${letter}-bar_mesial.svg`;
+    // return `${COMPONENT_ASSET_BASE}/${templateToothId}/bars/${templateToothId}_${letter}-bar_mesial.svg`;
+    return `${COMPONENT_ASSET_BASE}/${templateToothId}/bars/${templateToothId}_${letter}-bar_mesial${tipSuffix}.svg`;
   }
 
   const [, tier, side] = match;
   const modelName = tier === "d1" ? `${letter}-bar` : `${letter}-long-bar`;
-  return `${COMPONENT_ASSET_BASE}/${templateToothId}/bars/${templateToothId}_${modelName}_${side}.svg`;
+  // return `${COMPONENT_ASSET_BASE}/${templateToothId}/bars/${templateToothId}_${modelName}_${side}.svg`;
+  return `${COMPONENT_ASSET_BASE}/${templateToothId}/bars/${templateToothId}_${modelName}_${side}${tipSuffix}.svg`;
 }
 
 // Return image size for bar assets.

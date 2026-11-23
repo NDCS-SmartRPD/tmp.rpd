@@ -29,6 +29,7 @@ import {
   meshAnnotationEnv,
   showPresentToothRadialQuickPick,
   openRemoveComponentPicker,
+  positionAnteriorRestPanel,
 } from "./2DAnnotation.js";
 import { isComponentBlockedByMaterial, renderComponentCatalog } from "./annotationCatalog.js";
 import {
@@ -374,10 +375,52 @@ export function renderJaws() {
 
 // Swap in only the changed children, so untouched nodes keep their cached filter results.
 // A wholesale rebuild re-runs every tooth's feMorphology tint — ~1.5s per placement.
+function showBarTipDirectionDialog(anchor, onComplete) {
+  const root = document.getElementById("barTipDirectionDialog");
+  const panel = root?.querySelector(".anterior-rest-dialog-panel");
+  const backdrop = root?.querySelector(".anterior-rest-dialog-backdrop");
+  const tipBtns = root ? [...root.querySelectorAll("[data-bar-tip]")] : [];
+  if (!root || !panel || !backdrop || tipBtns.length === 0) {
+    onComplete(null);
+    return;
+  }
+
+  const finish = (tip) => {
+    document.removeEventListener("keydown", onKeyDown);
+    backdrop.removeEventListener("click", onBackdrop);
+    for (const btn of tipBtns) btn.removeEventListener("click", onTipClick);
+    panel.style.left = "";
+    panel.style.top = "";
+    panel.style.visibility = "";
+    root.classList.add("is-hidden");
+    root.setAttribute("aria-hidden", "true");
+    onComplete(tip);
+  };
+  const onKeyDown = (e) => {
+    if (e.key === "Escape") finish(null);
+  };
+  const onBackdrop = () => finish(null);
+  const onTipClick = (e) => finish(e.currentTarget.getAttribute("data-bar-tip"));
+
+  for (const btn of tipBtns) btn.addEventListener("click", onTipClick);
+  document.addEventListener("keydown", onKeyDown);
+  backdrop.addEventListener("click", onBackdrop);
+
+  panel.style.visibility = "hidden";
+  root.classList.remove("is-hidden");
+  root.setAttribute("aria-hidden", "false");
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      positionAnteriorRestPanel(panel, anchor);
+      panel.style.visibility = "visible";
+      tipBtns[0].focus();
+    });
+  });
+}
 
 // Places a bar on one tooth, resolving its side and flipping an existing
 // placement to the opposite surface when both sides are mesh-bearing.
-function placeBarOnTooth(toothId, jaw, tooth, catalogPick, hadSuppressedHints) {
+function placeBarOnTooth(toothId, jaw, tooth, catalogPick, hadSuppressedHints, anchor) {
   const barSurface = getBarPlacementSurfaceForTooth(toothId, jaw, state.teeth);
   if (!barSurface) {
     setMessage("Could not resolve bar type for this tooth.", true);
@@ -396,6 +439,14 @@ function placeBarOnTooth(toothId, jaw, tooth, catalogPick, hadSuppressedHints) {
   const surfaceToPlace = existing
     ? (canSwitchSide ? (getOppositeBarSurface(existing.surface) || barSurface) : String(existing.surface))
     : barSurface;
+
+    if (catalogPick.id === "bar-l") {
+    showBarTipDirectionDialog(anchor, (tip) => {
+      if (tip) placeSelectedComponentOnTooth(toothId, { surface: surfaceToPlace, tip });
+      renderJaw(jaw);
+    });
+    return;
+  }
   placeSelectedComponentOnTooth(toothId, { surface: surfaceToPlace });
   renderJaw(jaw);
 }
@@ -670,7 +721,7 @@ export function renderJaw(jaw) {
         if (catalogPick && isBarComponent(catalogPick)) {
           const set = getBarSuggestibleToothIdSet(state.teeth, jaw);
           if (set.has(toothId)) {
-            placeBarOnTooth(toothId, jaw, tooth, catalogPick, hadSuppressedHints);
+            placeBarOnTooth(toothId, jaw, tooth, catalogPick, hadSuppressedHints,event);
             return;
           }
         }
@@ -690,7 +741,7 @@ export function renderJaw(jaw) {
           if (hadSuppressedHints) renderJaw(jaw);
           return;
         }
-        placeBarOnTooth(toothId, jaw, tooth, catalogPick, hadSuppressedHints);
+        placeBarOnTooth(toothId, jaw, tooth, catalogPick, hadSuppressedHints,event);
         return;
       }
       if (catalogPick && isMeshComponent(catalogPick)) {

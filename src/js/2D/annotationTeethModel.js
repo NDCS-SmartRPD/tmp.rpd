@@ -107,7 +107,7 @@ export function hasPlacement(tooth, componentId, surface) {
 const RECIPROCATING_SLOT_IDS = new Set(["reciprocating-clasp", "plate-prox", "plate-crossmesh"]);
 
 // Add one component placement on tooth.
-export function addPlacement(tooth, componentId, surface) {
+export function addPlacement(tooth, componentId, surface,tip) {
   if (!Array.isArray(tooth.componentPlacements)) tooth.componentPlacements = [];
   // Placing a reciprocating element drops any other reciprocating element first.
   if (RECIPROCATING_SLOT_IDS.has(componentId)) {
@@ -123,6 +123,7 @@ export function addPlacement(tooth, componentId, surface) {
   tooth.componentPlacements.push({
     componentId,
     surface: normalizeSurface(surface),
+    ...(tip ? {tip} : {})
   });
   syncToothComponentsFromPlacements(tooth);
 }

@@ -595,7 +595,7 @@ function appendPlacedComponentMarkers(group, tooth, toothId, jaw) {
     if (!point) continue;
 
     const off = getBarPlacementOffset(placement.componentId, toothId, barSurface);
-    const href = getBarPlacementAssetReference(placement.componentId, toothId, barSurface);
+    const href = getBarPlacementAssetReference(placement.componentId, toothId, barSurface, placement.tip);
     const imageSize = getBarPlacementImageSize(placement.componentId, toothId, barSurface);
     const scale = getBarPlacementRenderScale(placement.componentId, toothId, barSurface);
     const width = imageSize.width * scale;

@@ -377,7 +377,7 @@ export function placeSelectedComponentOnTooth(toothId, placementContext = null) 
 
   const criteriaResult = assessPlacementCriteria(tooth, selectedComponent, COMPONENT_BY_ID);
   if (criteriaResult.pass) {
-    addPlacement(tooth, selectedComponent.id, targetSurface);
+    addPlacement(tooth, selectedComponent.id, targetSurface, placementContext?.tip);
     autoPlaceDefaultReciprocatingElement(tooth, selectedComponent);
     extendMajorConnectorAfterDeliberatePlacement(toothId, selectedComponent);
     setMessage(

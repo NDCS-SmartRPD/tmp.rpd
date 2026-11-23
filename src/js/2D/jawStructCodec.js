@@ -318,9 +318,12 @@ export function resolveJawStructDesign(parsed) {
     if (Number.isFinite(retCode) && retCode > 0) {
       if (retCode === 3) {
         const barCode = Number(f[RETAINER_BAR_CATEGORY_FIELD]);
-        const barId = RETAINER_BAR_CATEGORY.get(barCode);
+        // const barId = RETAINER_BAR_CATEGORY.get(barCode);
+        const barKey = RETAINER_BAR_CATEGORY.get(barCode);
+        const barId = barKey === "bar-l_M" || barKey === "bar-l_D" ? "bar-l" : barKey;
         if (barId) entry.bars.push(barId);
         else reportUnmapped(RETAINER_BAR_CATEGORY_FIELD, barCode);
+        if (barKey === "bar-l_D") entry.barTip = "distal";
       } else {
         const id = RETAINER_TYPE.get(retCode);
         if (id === "ball-clasp") {
@@ -553,7 +556,10 @@ function encodeToothLines(arrayIdx, fdi, rec, hasMesh) {
   else if (comps.includes("ring-clasp")) retainerType = 2;
   else if (barId) {
     retainerType = 3;
-    barCategory = inverseOf(RETAINER_BAR_CATEGORY).get(barId) ?? barCategory;
+    // barCategory = inverseOf(RETAINER_BAR_CATEGORY).get(barId) ?? barCategory;
+    const barTip = placements.find((p) => p.componentId === barId)?.tip;
+    const barKey = barId === "bar-l" ? (barTip === "distal" ? "bar-l_D" : "bar-l_M") : barId;
+    barCategory = inverseOf(RETAINER_BAR_CATEGORY).get(barKey) ?? barCategory;
   } else if (comps.includes("ball-clasp")) retainerType = 4;
   else if (comps.includes("adams-clasp")) retainerType = 5;
   else if (comps.includes("acrylic-clasp")) retainerType = 6;

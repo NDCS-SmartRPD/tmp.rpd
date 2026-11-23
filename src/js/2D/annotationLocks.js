@@ -1203,6 +1203,7 @@ export function buildPayload() {
           const by = Number(entry.barOffsetY);
           row.barOffsetX = Number.isFinite(bx) ? bx : 0;
           row.barOffsetY = Number.isFinite(by) ? by : 0;
+          if (entry.tip) row.tip = entry.tip;
         }
         return row;
       }),

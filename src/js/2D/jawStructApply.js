@@ -15,8 +15,8 @@ import {
 } from "./components.js";
 import { addPlacement, hasPlacement } from "./annotationTeethModel.js";
 
-function placeOnce(rec, componentId, surface) {
-  if (!hasPlacement(rec, componentId, surface)) addPlacement(rec, componentId, surface);
+function placeOnce(rec, componentId, surface,tip) {
+  if (!hasPlacement(rec, componentId, surface)) addPlacement(rec, componentId, surface,tip);
 }
 
 export function applyJawStructDesign(design, state) {
@@ -70,7 +70,7 @@ export function applyJawStructDesign(design, state) {
         console.warn(`[jawStructApply] no bar surface for ${fdi} (${barId}) — skipped`);
         continue;
       }
-      placeOnce(rec, barId, surface);
+      placeOnce(rec, barId, surface, t.barTip);
     }
   }
 
