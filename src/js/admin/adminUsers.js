@@ -5,6 +5,8 @@
 // The mutation payloads are UNVERIFIED against a real admin account; every shape
 // lives in the api object + normalizeUser below so a correction stays one line.
 
+import { loadMonitoring, showUserMonitoring, formatMonitoringTime, matchesMonitoring, loginStateLabels, communicationUsage, formatUsage, updateUsageDetail } from "./userMonitoring.js";
+
 import { toast, confirmModal, attachThemedCalendar } from "../shared/toast.js";
 import { initAdminShell, setStatLinkState } from "./adminShell.js";
 import { findIdentifierInPassword } from "../shared/passwordReset.js";
@@ -58,6 +60,11 @@ function normalizeUser(raw) {
     // until the backend ships that column, which hides everything pending-related.
     pending: Number(raw.pending ?? 0) === 1,
     createTime: raw.create_time ?? null,
+    loginState: raw.loginState,
+    loggedOut: raw.loggedOut,
+    lastLoginAt: raw.lastLoginAt,
+    lastContactAt: raw.lastContactAt,
+    monitoringAvailable: raw.monitoringAvailable,
     raw,
   };
 }
@@ -167,7 +174,7 @@ function visibleUsers() {
     // "View" link on the Admins card: show only admins.
     if (adminsOnlyView && !u.isAdmin) return false;
 
-    // Default is Active; "deactivated" shows only deactivated (excluding
+    // Default is Enabled; "deactivated" shows only deactivated (excluding
     // pending signups); "pending" shows only signup requests; "all" = everything.
     if (status === "active" && u.deleted) return false;
     if (status === "deactivated" && (!u.deleted || u.pending)) return false;
@@ -185,18 +192,22 @@ function visibleUsers() {
       const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       if (ymd !== dateVal) return false;
     }
-    return true;
+    const usage = communicationUsage(u.lastContactAt, document.getElementById("usageThreshold").value);
+    const usageFilter = document.getElementById("usageFilter").value;
+    if (usageFilter !== "all" && usage.status !== usageFilter) return false;
+    return matchesMonitoring(u, document.getElementById("contactTimestampType").value, document.getElementById("contactFrom").value, document.getElementById("contactTo").value, document.getElementById("contactLoginState").value);
   });
 }
 
 function renderUsers() {
   const tbody = document.getElementById("userTableBody");
   const users = visibleUsers();
+  document.getElementById("userResultCount").textContent = `Showing ${users.length} of ${allUsers.length} users`;
 
   renderUserStats();
 
   if (!users.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="au-empty">No users to show.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" class="au-empty">No users to show.</td></tr>`;
     return;
   }
 
@@ -211,7 +222,7 @@ function renderUsers() {
 
   const statusBadge = (u) => {
     if (u.pending) return `<span class="au-badge au-badge-pending">Pending approval</span>`;
-    return `<span class="au-badge ${u.deleted ? "au-badge-deleted" : "au-badge-active"}">${u.deleted ? "Deactivated" : "Active"}</span>`;
+    return `<span class="au-badge ${u.deleted ? "au-badge-deleted" : "au-badge-active"}">${u.deleted ? "Deactivated" : "Enabled"}</span>`;
   };
 
   tbody.innerHTML = users
@@ -223,6 +234,10 @@ function renderUsers() {
         <td><span class="au-badge ${u.isAdmin ? "au-badge-admin" : "au-badge-user"}">${u.isAdmin ? "Admin" : "User"}</span></td>
         <td>${statusBadge(u)}</td>
         <td>${esc(formatRegDate(u.createTime))}</td>
+        <td data-label="Last successful login">${esc(u.monitoringAvailable ? formatMonitoringTime(u.lastLoginAt) : "Unavailable")}</td>
+        <td data-label="Last API contact">${esc(u.monitoringAvailable ? formatMonitoringTime(u.lastContactAt) : "Unavailable")}</td>
+        <td data-label="Login state">${esc(u.monitoringAvailable ? loginStateLabels[u.loginState] || loginStateLabels.unknown : "Unavailable")}</td>
+        <td data-label="Communication usage">${esc(u.monitoringAvailable ? formatUsage(u.lastContactAt, document.getElementById("usageThreshold").value) : "Unavailable")}</td>
         <td class="cm-td-actions">
           <div class="au-actions">
             <button type="button" class="cm-icon-btn" data-action="edit" title="Edit" aria-label="Edit ${esc(u.username)}">
@@ -255,6 +270,7 @@ function renderUsers() {
 function openUserDetail(user) {
   if (!user) return;
   selectedUserUuid = user.uuid;
+  showUserMonitoring(user);
 
   document.getElementById("userDetailEmpty")?.classList.add("hidden");
   document.getElementById("userDetailContent")?.classList.remove("hidden");
@@ -267,7 +283,7 @@ function openUserDetail(user) {
   set("userDetailName", user.username || "—");
   set("userDetailEmail", user.email || "—");
   set("userDetailRole", user.isAdmin ? "Administrator" : "User");
-  set("userDetailStatus", user.pending ? "Pending approval" : user.deleted ? "Deactivated" : "Active");
+  set("userDetailStatus", user.pending ? "Pending approval" : user.deleted ? "Deactivated" : "Enabled");
   set("userDetailDate", formatRegDate(user.createTime));
   set("userDetailUuid", user.uuid || "—");
 
@@ -292,6 +308,8 @@ function closeUserDetail() {
 // ---------------------------------------------------------------------------
 
 function showGate(message) {
+  document.getElementById("contactFilterPanel").classList.add("hidden");
+  document.getElementById("userResultCount").classList.add("hidden");
   document.getElementById("adminToolbar").classList.add("hidden");
   document.getElementById("userListWrap").classList.add("hidden");
   const statsBar = document.getElementById("userStatsBar");
@@ -304,7 +322,8 @@ function showGate(message) {
 
 async function loadUsers() {
   const tbody = document.getElementById("userTableBody");
-  tbody.innerHTML = `<tr><td colspan="6" class="au-empty">Loading users…</td></tr>`;
+  document.getElementById("userResultCount").textContent = "Loading users…";
+  tbody.innerHTML = `<tr><td colspan="10" class="au-empty">Loading users…</td></tr>`;
 
   try {
     const data = await api.listUsers();
@@ -317,6 +336,30 @@ async function loadUsers() {
     // corrected quickly if the field names differ.
     if (rows[0]) console.log("[admin] user row keys:", Object.keys(rows[0]));
 
+    let monitoring = new Map();
+    let monitoringAvailable = false;
+    const contactStatus = document.getElementById("contactFilterStatus");
+    try {
+      monitoring = await loadMonitoring();
+      monitoringAvailable = true;
+      contactStatus.textContent = "Usage is based only on last API contact and the selected threshold. Missing or invalid timestamps are Unknown; this is not online presence.";
+    } catch (error) {
+      if (error.status === 401 || error.status === 403) {
+        showGate("Administrator access is required. Sign in again.");
+        return;
+      }
+      contactStatus.textContent = "Communication data unavailable. Check the monitoring API deployment or server logs.";
+    }
+    for (const id of ["contactFrom", "contactTo", "contactTimestampType", "contactLoginState", "usageFilter", "usageThreshold"]) document.getElementById(id).disabled = !monitoringAvailable;
+    if (!monitoringAvailable) {
+      document.getElementById("contactFrom").value = "";
+      document.getElementById("contactTo").value = "";
+      document.getElementById("contactLoginState").value = "all";
+      document.getElementById("usageFilter").value = "all";
+    }
+    for (const row of rows) {
+      if (row && typeof row === "object") Object.assign(row, monitoring.get(row.uuid), { monitoringAvailable });
+    }
     allUsers = rows.filter((r) => r && typeof r === "object").map(normalizeUser);
     renderUsers();
   } catch (err) {
@@ -337,7 +380,8 @@ async function loadUsers() {
       ? "The user list endpoint (user/getall) rejected the pagination parameters. Backend fix required."
       : `Failed to load users — ${esc(err.message)}`;
     console.error("Failed to load users:", err);
-    tbody.innerHTML = `<tr><td colspan="6" class="au-empty">${isPaginationBug ? esc(msg) : msg}</td></tr>`;
+    document.getElementById("userResultCount").textContent = "User results unavailable";
+    tbody.innerHTML = `<tr><td colspan="10" class="au-empty">${isPaginationBug ? esc(msg) : msg}</td></tr>`;
     toast.error(isPaginationBug ? "Backend can't list users (see table)." : "Failed to load users.");
   }
 }
@@ -612,5 +656,30 @@ document.addEventListener("DOMContentLoaded", () => {
     if (user) openUserDetail(user);
   });
 
+  for (const id of ["contactFrom", "contactTo"]) {
+    document.getElementById(id).addEventListener("change", () => {
+      const from = document.getElementById("contactFrom");
+      const to = document.getElementById("contactTo");
+      to.setCustomValidity(from.value && to.value && from.value > to.value ? "End date must be on or after start date." : "");
+      to.reportValidity();
+      renderUsers();
+    });
+  }
+  for (const id of ["contactTimestampType", "contactLoginState"]) {
+    document.getElementById(id).addEventListener("change", renderUsers);
+  }
+  document.getElementById("usageFilter").addEventListener("change", renderUsers);
+  document.getElementById("usageThreshold").addEventListener("change", () => { renderUsers(); updateUsageDetail(); });
+  document.getElementById("clearContactRange").addEventListener("click", () => {
+    document.getElementById("usageFilter").value = "all";
+    document.getElementById("usageThreshold").value = "30";
+    updateUsageDetail();
+    document.getElementById("contactTimestampType").value = "lastContactAt";
+    document.getElementById("contactFrom").value = "";
+    document.getElementById("contactTo").value = "";
+    document.getElementById("contactLoginState").value = "all";
+    document.getElementById("contactTo").setCustomValidity("");
+    renderUsers();
+  });
   loadUsers();
 });

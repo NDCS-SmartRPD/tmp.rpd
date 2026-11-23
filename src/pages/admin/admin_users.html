@@ -68,7 +68,7 @@
           <span class="cm-stat-value" id="userStatAdmins">0</span>
         </div>
         <div class="cm-stat-card">
-          <span class="cm-stat-label">Active Users</span>
+          <span class="cm-stat-label">Enabled Accounts</span>
           <span class="cm-stat-value" id="userStatActive">0</span>
         </div>
         <div class="cm-stat-card">
@@ -114,7 +114,7 @@
         <div class="cm-toolbar au-toolbar" id="adminToolbar">
           <div class="cm-chip cm-chip-filter">
             <i class="fa-regular fa-calendar" aria-hidden="true"></i>
-            <label for="userDateFilter">Filter by Date</label>
+            <label for="userDateFilter">Registered on</label>
             <!-- Native date input, enhanced by attachThemedCalendar() into the
                  shared on-brand calendar (see toast.js / toast.css). -->
             <input type="date" id="userDateFilter" class="cm-date-input" />
@@ -144,7 +144,7 @@
             <i class="fa fa-filter" aria-hidden="true"></i>
             <label for="userStatusFilter">Show</label>
             <select id="userStatusFilter" class="cm-filter-select">
-              <option value="active" selected>Active</option>
+              <option value="active" selected>Enabled</option>
               <option value="pending">Pending approval</option>
               <option value="deactivated">Deactivated</option>
               <option value="all">All</option>
@@ -167,6 +167,47 @@
           </button>
         </div>
 
+        <div class="au-contact-filter" id="contactFilterPanel">
+          <label for="usageFilter">Communication usage</label>
+          <select id="usageFilter" disabled>
+            <option value="all">All usage statuses</option>
+            <option value="recent">Recently active</option>
+            <option value="inactive">Inactive</option>
+            <option value="unknown">Unknown</option>
+          </select>
+          <label for="usageThreshold">Recency threshold</label>
+          <select id="usageThreshold" disabled>
+            <option value="7">7 days</option>
+            <option value="30" selected>30 days</option>
+            <option value="60">60 days</option>
+            <option value="90">90 days</option>
+          </select>
+          <details class="au-advanced-filters">
+            <summary>More filters</summary>
+            <div class="au-advanced-fields">
+          <label for="contactTimestampType">Timestamp type</label>
+          <select id="contactTimestampType" disabled>
+            <option value="lastContactAt">Last API contact</option>
+            <option value="lastLoginAt">Last successful login</option>
+          </select>
+          <label for="contactFrom">From (SGT)</label>
+          <input type="datetime-local" id="contactFrom" disabled />
+          <label for="contactTo">To (inclusive)</label>
+          <input type="datetime-local" id="contactTo" disabled />
+          <label for="contactLoginState">Login state</label>
+          <select id="contactLoginState" disabled>
+            <option value="all">All states</option>
+            <option value="within_timeout">Within login timeout</option>
+            <option value="logged_out">Logged out</option>
+            <option value="timed_out">Login timed out</option>
+            <option value="unknown">Not recorded</option>
+          </select>
+            </div>
+          </details>
+          <button type="button" id="clearContactRange" class="cm-btn cm-btn-secondary">Clear monitoring filters</button>
+          <p id="contactFilterStatus" role="status">Loading login/contact information…</p>
+        </div>
+        <p id="userResultCount" class="au-result-count" role="status" aria-live="polite">Loading users…</p>
         <div class="cm-table-wrap au-table-wrap" id="userListWrap">
           <table class="cm-table">
             <thead>
@@ -174,8 +215,12 @@
                 <th scope="col">Username</th>
                 <th scope="col">Email</th>
                 <th scope="col">Role</th>
-                <th scope="col">Status</th>
+                <th scope="col">Account status</th>
                 <th scope="col">Date Registered</th>
+                <th scope="col">Last successful login (SGT)</th>
+                <th scope="col">Last API contact (SGT)</th>
+                <th scope="col">Login state</th>
+                <th scope="col">Communication usage</th>
                 <th class="cm-th-actions" scope="col">Actions</th>
               </tr>
             </thead>
@@ -219,7 +264,7 @@
           </div>
 
           <div class="cm-field">
-            <div class="cm-field-label">STATUS</div>
+            <div class="cm-field-label">ACCOUNT STATUS</div>
             <div class="cm-field-value" id="userDetailStatus">—</div>
           </div>
 
@@ -233,6 +278,7 @@
             <div class="cm-field-value au-detail-uuid" id="userDetailUuid">—</div>
           </div>
 
+          <section id="userMonitoringDetail" aria-label="User login and activity"></section>
           <div class="cm-detail-cta">
             <button id="userDetailEditBtn" class="cm-btn cm-btn-primary cm-btn-large" type="button">
               Edit User

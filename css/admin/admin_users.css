@@ -28,6 +28,14 @@
 }
 .au-page > .au-stats { padding: 14px 24px 0; margin: 0; }
 .au-page > .cm-main { grid-column: 1; grid-row: 3; min-height: 0; }
+/* Keep the result list usable when filters wrap or the window is short. */
+.au-page > .cm-main { overflow-y: auto; }
+.au-page .au-table-wrap { flex: 1 0 300px; min-height: 300px; }
+.au-result-count { flex: 0 0 auto; margin: 0; font-size: 13px; color: var(--muted, #64748b); }
+.au-advanced-filters { flex: 0 0 auto; }
+.au-advanced-filters[open] { flex-basis: 100%; }
+.au-advanced-filters summary { cursor: pointer; font-size: 13px; font-weight: 600; padding: 6px 0; }
+.au-advanced-fields { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 8px 0; }
 /* User detail panel: nudge it down a little and give it a full bordered card
    look (the base .cm-detail only has a left border). */
 .au-page > .cm-detail {
@@ -91,13 +99,13 @@
 }
 /* Extend the cards a little on this page so the freed width reads as fuller. */
 .au-stats .cm-stat-card {
-  min-height: 118px;
-  padding: 18px 20px;
+  min-height: 76px;
+  padding: 10px 16px;
 }
 /* Tablet landscape: 3 compact cards per row. */
 @media (max-width: 1100px) {
   .au-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-  .au-stats .cm-stat-card { min-height: 96px; padding: 14px 16px; }
+  .au-stats .cm-stat-card { min-height: 72px; padding: 10px 14px; }
 }
 /* Tablet portrait: 2 per row. */
 @media (max-width: 780px) {
@@ -319,4 +327,25 @@
    which was overriding the compact tablet size. */
 @media (max-width: 1100px) {
   .au-stats .cm-stat-value { font-size: 1.4rem; }
+}
+.au-contact-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+}
+.au-contact-filter input, .au-contact-filter select { padding: 8px; border: 1px solid #b8c9c5; border-radius: 6px; max-width: 100%; }
+.au-contact-filter p { flex-basis: 100%; margin: 0; font-size: 12px; }
+#userMonitoringDetail { border-top: 1px solid #dce6e3; padding-top: 12px; margin-top: 16px; text-align: left; }
+#userMonitoringDetail button[hidden] { display: none; }
+#userMonitoringDetail h3 { font-size: 15px; }
+#userMonitoringDetail p { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+#userMonitoringDetail ol { padding-left: 20px; }
+#userMonitoringDetail li { margin-bottom: 14px; font-size: 13px; }
+@media (max-width: 640px) {
+  .au-row td[data-label]::before { content: attr(data-label) ": "; font-weight: 600; }
+}
+@media (max-width: 860px) {
+  .au-page > .cm-detail { margin: 0; border-radius: 0; }
 }
