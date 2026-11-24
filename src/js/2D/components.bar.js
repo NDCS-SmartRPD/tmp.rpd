@@ -468,7 +468,7 @@ export function getBarSuggestibleToothIdSet(teethById, jaw) {
  * back to mesial only when none is within two positions. The side LABEL is keyed to
  * BAR_PLACEMENT_OFFSET_BY_TOOTH_SURFACE tuning, NOT anatomy — never invert it.
  */
-export function getBarPlacementSurfaceForTooth(toothId, jaw, teethById) {
+export function getBarPlacementSurfaceForTooth(toothId, jaw, teethById, onlySide = null) {
   const order = TOOTH_ORDER[jaw];
   const toothIndex = order.indexOf(String(toothId));
   if (toothIndex < 0 || !teethById[toothId]?.isPresent) return null;
@@ -487,6 +487,7 @@ export function getBarPlacementSurfaceForTooth(toothId, jaw, teethById) {
     const distance = Math.abs(toothIndex - i);
     if (distance !== 1 && distance !== 2) continue;
     const isDistal = (i > toothIndex ? 1 : -1) !== mesialDirection;
+    if (onlySide && (isDistal ? "mesial" : "distal") !== onlySide) continue;
     const better =
       bestIndex === null ||
       (isDistal && !bestIsDistal) ||

@@ -5,6 +5,7 @@ import {
   hasMissingTeethOnBothSidesForBar,
   getBarPlacementSurfaceForTooth,
   getBarSuggestibleToothIdSet,
+  getRetainerClaspSuggestionRadius,
   handleMeshToolDoubleClick,
   isAdamsClaspComponent,
   isBallClaspComponent,
@@ -38,6 +39,7 @@ import {
 } from "./annotationPlacement.js";
 import {
   getToothPlacement,
+  getToothScale,
   toggleToothPresence,
   toggleToothStatus,
 } from "./annotationTeethModel.js";
@@ -360,12 +362,12 @@ function renderArchBackground(parent, jaw) {
   }
 }
 
-function getOppositeBarSurface(surface) {
-  const s = String(surface || "").toLowerCase();
-  if (s.endsWith("_mesial")) return s.replace(/_mesial$/, "_distal");
-  if (s.endsWith("_distal")) return s.replace(/_distal$/, "_mesial");
-  return null;
-}
+// function getOppositeBarSurface(surface) {
+//   const s = String(surface || "").toLowerCase();
+//   if (s.endsWith("_mesial")) return s.replace(/_mesial$/, "_distal");
+//   if (s.endsWith("_distal")) return s.replace(/_distal$/, "_mesial");
+//   return null;
+// }
 
 // Render both arches.
 export function renderJaws() {
@@ -420,7 +422,7 @@ function showBarTipDirectionDialog(anchor, onComplete) {
 
 // Places a bar on one tooth, resolving its side and flipping an existing
 // placement to the opposite surface when both sides are mesh-bearing.
-function placeBarOnTooth(toothId, jaw, tooth, catalogPick, hadSuppressedHints, anchor) {
+function placeBarOnTooth(toothId, jaw, tooth, catalogPick, hadSuppressedHints, anchor, pickedSurface = null) {
   const barSurface = getBarPlacementSurfaceForTooth(toothId, jaw, state.teeth);
   if (!barSurface) {
     setMessage("Could not resolve bar type for this tooth.", true);
@@ -436,10 +438,13 @@ function placeBarOnTooth(toothId, jaw, tooth, catalogPick, hadSuppressedHints, a
     renderJaw(jaw);
     return;
   }
-  const surfaceToPlace = existing
-    ? (canSwitchSide ? (getOppositeBarSurface(existing.surface) || barSurface) : String(existing.surface))
-    : barSurface;
-
+  // const surfaceToPlace = existing
+  //   ? (canSwitchSide ? (getOppositeBarSurface(existing.surface) || barSurface) : String(existing.surface))
+  //   : barSurface;
+  const otherSide = String(existing?.surface || "").endsWith("mesial") ? "distal" : "mesial";
+  const surfaceToPlace = pickedSurface || (existing
+    ? (canSwitchSide ? (getBarPlacementSurfaceForTooth(toothId, jaw, state.teeth, otherSide) || barSurface) : String(existing.surface))
+    : barSurface);
     if (catalogPick.id === "bar-l") {
     showBarTipDirectionDialog(anchor, (tip) => {
       if (tip) placeSelectedComponentOnTooth(toothId, { surface: surfaceToPlace, tip });
@@ -449,6 +454,65 @@ function placeBarOnTooth(toothId, jaw, tooth, catalogPick, hadSuppressedHints, a
   }
   placeSelectedComponentOnTooth(toothId, { surface: surfaceToPlace });
   renderJaw(jaw);
+}
+
+function appendBarSideSuggestionPoints(group, tooth, toothId, jaw) {
+  if (!showBarSuggestions()) return;
+  const mesialSurface = getBarPlacementSurfaceForTooth(toothId, jaw, state.teeth, "mesial");
+  const distalSurface = getBarPlacementSurfaceForTooth(toothId, jaw, state.teeth, "distal");
+  if (!mesialSurface || !distalSurface) return;
+
+  const catalogPick = COMPONENT_BY_ID.get(state.selectedComponentId || "");
+  const existing = (tooth.componentPlacements || []).find(
+    (entry) => entry.componentId === catalogPick.id && String(entry.surface || "").startsWith("bar_")
+  );
+  const order = TOOTH_ORDER[jaw];
+  const toothIndex = order.indexOf(toothId);
+  const mesialDirection = toothIndex < order.length / 2 ? 1 : -1;
+  const here = getToothPlacement(jaw, toothId);
+  // const radius = getRetainerClaspSuggestionRadius();
+  const radius = (getRetainerClaspSuggestionRadius() + 2) * getToothScale(toothId, jaw);
+  const tip = (radius * 0.55).toFixed(2);
+  const back = (-radius * 0.2).toFixed(2);
+  const half = (radius * 0.4).toFixed(2);
+
+  for (const [side, surface] of [["mesial", mesialSurface], ["distal", distalSurface]]) {
+    if (String(existing?.surface || "").endsWith(side)) continue;
+    const sideDirection = side === "mesial" ? mesialDirection : -mesialDirection;
+    const next = getToothPlacement(jaw, order[toothIndex + sideDirection]);
+    // const cx = (next.x - here.x) * 0.3;
+    // const cy = (next.y - here.y) * 0.3;
+    const cx = (next.x - here.x) * 0.25;
+    const cy = (next.y - here.y) * 0.25;
+    const angleDeg = (Math.atan2(cy, cx) * 180) / Math.PI;
+
+    const wrapper = svgEl("g", { class: `bar-side-suggestion-group bar-side-suggestion-${side}` });
+    wrapper.appendChild(
+      svgEl("circle", {
+        cx: cx.toFixed(2),
+        cy: cy.toFixed(2),
+        r: String(radius),
+        // class: "clasp-suggestion-point",
+        class: "clasp-suggestion-point rpc-suggestion-point",
+        "data-surface": surface,
+      })
+    );
+    wrapper.appendChild(
+      svgEl("polyline", {
+        points: `${back},${-half} ${tip},0 ${back},${half}`,
+        class: "clasp-suggestion-arrow",
+        transform: `translate(${cx.toFixed(2)} ${cy.toFixed(2)}) rotate(${angleDeg.toFixed(2)})`,
+      })
+    );
+    wrapper.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const pick = COMPONENT_BY_ID.get(state.selectedComponentId || "");
+      const toothNow = state.teeth[toothId];
+      if (!toothNow || !isBarComponent(pick)) return;
+      placeBarOnTooth(toothId, jaw, toothNow, pick, false, event, surface);
+    });
+    group.appendChild(wrapper);
+  }
 }
 
 function reconcileArchChildren(parent, fragment) {
@@ -642,6 +706,7 @@ export function renderJaw(jaw) {
     moveAcrylicPiecesToLayers(group, acrylicLayers, toothTransform);
     appendRestSuggestionPoints(suggestionGroup, tooth, toothId, jaw);
     appendRetainerClaspSuggestionPoints(suggestionGroup, tooth, toothId, jaw);
+    appendBarSideSuggestionPoints(suggestionGroup, tooth, toothId, jaw);
     appendBallClaspSuggestions(suggestionGroup, tooth, toothId, jaw);
     appendAdamsClaspSuggestions(suggestionGroup, tooth, toothId, jaw);
 

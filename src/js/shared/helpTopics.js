@@ -869,7 +869,8 @@ export const HELP_TOPICS = [
       {
         text: "Select a highlighted tooth to place it — teeth light up within two of a missing tooth with mesh.",
         selector: ARCHES,
-        advanceOn: ".tooth-bar-suggestible",
+        // advanceOn: ".tooth-bar-suggestible",
+        advanceOn: ".tooth-bar-suggestible, .bar-side-suggestion-group",
       },
       FINISH_PLACING,
     ],

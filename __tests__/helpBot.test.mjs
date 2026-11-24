@@ -437,7 +437,8 @@ describe("Show me is done on the page", () => {
 
   test("a bar is placed on a lit tooth, and its card says why none may be lit", () => {
     const step = placing("bars");
-    expect(step.advanceOn).toBe(".tooth-bar-suggestible");
+    // expect(step.advanceOn).toBe(".tooth-bar-suggestible");
+    expect(step.advanceOn).toBe(".tooth-bar-suggestible, .bar-side-suggestion-group");
     expect(step.requires).toBeUndefined();
     expect(step.text).toMatch(/mesh/);
   });
