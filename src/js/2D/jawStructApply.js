@@ -65,7 +65,10 @@ export function applyJawStructDesign(design, state) {
     for (const p of t.placements) placeOnce(rec, p.componentId, p.surface);
     for (const barId of t.bars) {
       const jaw = rec.jaw || jawSide;
-      const surface = getBarPlacementSurfaceForTooth(fdi, jaw, state.teeth);
+      // const surface = getBarPlacementSurfaceForTooth(fdi, jaw, state.teeth);
+      const surface =
+        getBarPlacementSurfaceForTooth(fdi, jaw, state.teeth, t.barSide) ||
+        getBarPlacementSurfaceForTooth(fdi, jaw, state.teeth);
       if (!surface) {
         console.warn(`[jawStructApply] no bar surface for ${fdi} (${barId}) — skipped`);
         continue;

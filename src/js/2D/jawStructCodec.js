@@ -324,6 +324,7 @@ export function resolveJawStructDesign(parsed) {
         if (barId) entry.bars.push(barId);
         else reportUnmapped(RETAINER_BAR_CATEGORY_FIELD, barCode);
         if (barKey === "bar-l_D") entry.barTip = "distal";
+        if (RETAINER_BAR_TYPE_FIELD in f) entry.barSide = Number(f[RETAINER_BAR_TYPE_FIELD]) === 1 ? "mesial" : "distal";
       } else {
         const id = RETAINER_TYPE.get(retCode);
         if (id === "ball-clasp") {
@@ -580,10 +581,13 @@ function encodeToothLines(arrayIdx, fdi, rec, hasMesh) {
 
   // Bar side: loaded value wins; else derive from the placement surface.
   let barType = Number(rawOr(RETAINER_BAR_TYPE_FIELD, 0));
-  if (!(RETAINER_BAR_TYPE_FIELD in raw) && barId) {
-    const barPl = placements.find((p) => p.componentId === barId);
-    barType = barPl && String(barPl.surface || "").includes("distal") ? 1 : 0;
-  }
+  // if (!(RETAINER_BAR_TYPE_FIELD in raw) && barId) {
+  //   const barPl = placements.find((p) => p.componentId === barId);
+  //   barType = barPl && String(barPl.surface || "").includes("distal") ? 1 : 0;
+  // }
+  const barPl = barId ? placements.find((p) => p.componentId === barId) : null;
+  if (barPl) barType = String(barPl.surface || "").endsWith("mesial") ? 1 : 0;
+
 
   // Derived PURELY from the placed component so removals persist: 1=reciprocating-clasp,
   // 2=plate-prox, 3=plate-crossmesh, 0=none. The connector switch keeps them in step.
