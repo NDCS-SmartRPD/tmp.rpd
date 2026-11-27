@@ -137,6 +137,7 @@ async function sendOTP() {
         isAdmin: data.isAdmin
       };
       localStorage.setItem("loggedInUser", JSON.stringify(userInfo));
+      localStorage.setItem("lastActivityAt", String(Date.now()));
 
       // Honor "Remember me": keep the username for next time, or clear it.
       try {

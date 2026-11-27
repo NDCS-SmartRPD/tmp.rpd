@@ -24,7 +24,38 @@ function readStoredLanguage() {
   return LANGUAGES[0].code;
 }
 
+const IDLE_LOGOUT_MS = 30 * 60 * 1000;
+const LAST_ACTIVITY_KEY = "lastActivityAt";
+
+function startIdleLogout(indexHref) {
+  if (!localStorage.getItem("loggedInUser")) return;
+
+  let lastWrite = 0;
+  const markActive = () => {
+    const now = Date.now();
+    if (now - lastWrite < 10 * 1000) return;
+    lastWrite = now;
+    try { localStorage.setItem(LAST_ACTIVITY_KEY, String(now)); } catch { /* ignore */ }
+  };
+
+  const checkIdle = () => {
+    if (!localStorage.getItem("loggedInUser")) return;
+    const last = Number(localStorage.getItem(LAST_ACTIVITY_KEY)) || Date.now();
+    if (Date.now() - last < IDLE_LOGOUT_MS) return;
+    localStorage.removeItem("loggedInUser");
+    localStorage.removeItem(LAST_ACTIVITY_KEY);
+    window.location.href = `${indexHref}?expired=1`;
+  };
+
+  checkIdle();
+  ["pointerdown", "pointermove", "keydown", "wheel"].forEach((type) =>
+    window.addEventListener(type, markActive, { capture: true, passive: true })
+  );
+  setInterval(checkIdle, 60 * 1000);
+}
+
 export function setupAppSidebar({ triggerId = "footerMenuBtn", indexHref = "../../index.html" } = {}) {
+  startIdleLogout(indexHref);
   const sidebar = document.getElementById("appSidebar");
   const trigger = document.getElementById(triggerId);
   if (!sidebar) return { open() {}, close() {} };
