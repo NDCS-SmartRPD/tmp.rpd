@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<title>SmartRPD Target Solution Architecture Diagram</title>
+<style>
+  *{box-sizing:border-box} html,body{margin:0;padding:0;background:#eef2f6;color:#111827;font-family:Arial,"Segoe UI",sans-serif}
+  body{padding:20px}.sheet{width:1720px;min-height:960px;margin:0 auto;background:#fff;border:1px solid #cbd5e1;padding:26px 30px 22px;box-shadow:0 5px 20px rgba(15,23,42,.10)}
+  h1{margin:0;font-size:32px;line-height:1.05;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:6px;letter-spacing:0}
+  .subtitle{margin:10px 0 15px;color:#475569;font-size:15px}.diagram{position:relative;height:710px;border-top:1px solid #d6dde6;padding-top:18px;overflow:hidden}
+  .zone{position:absolute;top:56px;height:570px;border:2px dashed #64748b;border-radius:14px;padding:44px 14px 14px;background:#f8fafc;z-index:1}
+  .zone-title{position:absolute;top:12px;left:14px;right:14px;text-align:center;font-size:16px;font-weight:700}.zone-sub{display:block;margin-top:4px;color:#536174;font-size:11px;font-weight:400}
+  .client{left:0;width:295px;background:#dff5e4;border-color:#4f9c63}.frontend{left:315px;width:250px;background:#eefbf1;border-color:#70a87c}.edge{left:585px;width:415px;background:#f7f9fc}.app{left:1020px;width:290px;background:#e8f0fb}.data{left:1330px;width:330px;background:#e7edf8}
+  .node{position:absolute;background:#fff;border:1.5px solid #526274;border-radius:6px;padding:12px;box-shadow:0 2px 7px rgba(15,23,42,.12);z-index:4;text-align:center}
+  .node h2{margin:6px 0 5px;font-size:14px;line-height:1.16}.node p{margin:2px 0;color:#405167;font-size:11px;line-height:1.3}.node code{font:10px Consolas,monospace;color:#174ea6;overflow-wrap:anywhere}.icon{height:38px;color:#12263a}.icon svg{width:38px;height:38px;stroke:currentColor;fill:none;stroke-width:1.8}.device{left:31px;width:232px;height:112px;display:grid;grid-template-columns:48px 1fr;align-items:center;text-align:left}.device h2{margin:0 0 5px}.device p{font-size:10.5px}.dev1{top:132px}.dev2{top:262px}.dev3{top:392px}
+  .pages{left:335px;top:224px;width:210px;height:180px}.pages .icon{color:#1a7f45}.internet{left:602px;top:168px;width:108px;height:135px}.internet .icon{color:#166534}.filter{left:727px;top:168px;width:122px;height:135px}.filter .icon{color:#7c3d12}.firewall{left:866px;top:168px;width:116px;height:135px}.firewall .icon{color:#9b1c1c}.api{left:1040px;top:164px;width:250px;height:170px}.api .icon{color:#174ea6}.cors{left:1040px;top:376px;width:250px;height:158px;border-color:#b7791f;background:#fffbeb}.cors .icon{height:30px;color:#9a6700}.cors .icon svg{height:30px;width:30px}.db{left:1350px;top:210px;width:290px;height:190px}.db .icon{color:#5b3cc4}
+  .url{margin-top:8px!important;padding-top:7px;border-top:1px solid #dbe3ec}.badge{display:inline-block;margin:4px 2px 0;padding:3px 6px;border-radius:3px;background:#e8eef5;color:#334155;font-size:9.5px;font-weight:700}.badge.ok{background:#dcfce7;color:#166534}.badge.warn{background:#fef3c7;color:#92400e}
+  .wires{position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none}.wire{fill:none;stroke:#176b3a;stroke-width:4}.wire.private{stroke:#334155}.wire.dash{stroke:#9a6700;stroke-width:2.5;stroke-dasharray:7 5}.arrow{fill:#176b3a}.arrow-private{fill:#334155}.wire-label{font-size:11px;font-weight:700;fill:#223044;paint-order:stroke;stroke:#fff;stroke-width:5px}.small-label{font-size:10px;fill:#536174;paint-order:stroke;stroke:#fff;stroke-width:4px}
+  .callout{position:absolute;z-index:5;background:#fff;border:1px solid #9aa7b5;border-radius:5px;padding:8px 10px;font-size:10.5px;line-height:1.35;color:#334155;text-align:center}.access{left:1030px;top:552px;width:270px}.governance{left:1340px;top:552px;width:310px}.callout strong{display:block;color:#111827;font-size:11px;margin-bottom:3px}
+  .footer{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:12px;margin-top:-22px}.foot{border-top:3px solid #315b82;background:#f8fafc;padding:9px 12px;font-size:10.5px;line-height:1.4;color:#334155}.foot strong{display:block;color:#17202a;font-size:11.5px;margin-bottom:3px}.foot.warn{border-color:#b7791f;background:#fffbeb}
+  @media(max-width:1760px){body{overflow-x:auto}} @media print{body{padding:0;background:#fff}.sheet{border:0;box-shadow:none;margin:0}}
+</style>
+</head>
+<body>
+<main class="sheet">
+  <h1>Target Solution Architecture Diagram</h1>
+  <p class="subtitle">SmartRPD Web Application — cybersecurity approval view (anonymised dental scans and anonymised case identifiers only)</p>
+  <section class="diagram" aria-label="SmartRPD target solution architecture">
+    <div class="zone client"><div class="zone-title">Remote End-User Devices<span class="zone-sub">Authorised case users and administrators via supported web browser</span></div></div>
+    <div class="zone frontend"><div class="zone-title">Presentation Tier<span class="zone-sub">GitHub-hosted static frontend</span></div></div>
+    <div class="zone edge"><div class="zone-title">Secured Public API Edge<span class="zone-sub">Internet HTTPS and network security controls</span></div></div>
+    <div class="zone app"><div class="zone-title">GCP Application Tier<span class="zone-sub">Private API backend</span></div></div>
+    <div class="zone data"><div class="zone-title">GCP Data Tier<span class="zone-sub">Private database and object storage</span></div></div>
+
+    <div class="node device dev1"><div class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1"/><path d="M8 20h8M12 16v4"/></svg></div><div><h2>Corporate Laptop/Desktop</h2><p>Managed corporate device<br>Individual account granted by administrator</p></div></div>
+    <div class="node device dev2"><div class="icon"><svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg></div><div><h2>Corporate Mobile/Tablet</h2><p>Internet-enabled managed device<br>Supported browser and approved network access</p></div></div>
+    <div class="node device dev3"><div class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1"/><path d="M2 20h20M8 16v4M16 16v4"/></svg></div><div><h2>Approved Internet-Enabled Device</h2><p>Authorised device subject to organisational access policy and web filtering</p></div></div>
+
+    <div class="node pages"><div class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 4 6 4 9s-1 6-4 9c-3-3-4-6-4-9s1-6 4-9"/></svg></div><h2>SmartRPD Frontend UI</h2><p>GitHub Pages serves static HTML, CSS, JavaScript and the browser-based 3D viewer.</p><p class="url"><code>https://ndcs-smartrpd.github.io/tmp.rpd/</code></p><span class="badge ok">HTTPS</span><span class="badge">No API or database on GitHub</span></div>
+
+    <div class="node internet"><div class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 4 6 4 9s-1 6-4 9c-3-3-4-6-4-9s1-6 4-9"/></svg></div><h2>Internet HTTPS</h2><p>Encrypted TLS connection</p><span class="badge ok">Port 443</span></div>
+    <div class="node filter"><div class="icon"><svg viewBox="0 0 24 24"><path d="M4 4h16v6c0 5-3 9-8 11-5-2-8-6-8-11z"/><path d="M8 8h8M8 12h8M10 16h4"/></svg></div><h2>Network Security Service</h2><p>Enterprise web filtering<br>Exact frontend and API URL allowlisting</p></div>
+    <div class="node firewall"><div class="icon"><svg viewBox="0 0 24 24"><path d="M3 4h18v16H3zM3 9h18M3 15h18M8 4v5M16 9v6M9 15v5"/></svg></div><h2>Firewall Layer</h2><p>GCP HTTPS Load Balancer<br>Cloud Armor request filtering</p></div>
+
+    <div class="node api"><div class="icon"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="5" rx="1"/><rect x="4" y="10" width="16" height="5" rx="1"/><rect x="4" y="17" width="16" height="4" rx="1"/><path d="M8 5.5h.01M8 12.5h.01M8 19h.01"/></svg></div><h2>SmartRPD REST API Service</h2><p>Node.js/Express on GCP Compute Engine<br>Authentication, role checks, case workflow and file handling</p><p class="url"><code>https://live.api.smartrpdai.com/api/smartrpd/*</code></p><span class="badge ok">Private VM 10.148.0.2</span></div>
+    <div class="node cors"><div class="icon"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></div><h2>Application Access Control</h2><p>Individual username/password authentication, backend role authorisation and administrator-only functions</p><p>Exact CORS origin: <code>https://ndcs-smartrpd.github.io</code></p><span class="badge warn">Production CORS to include</span><span class="badge">GET · POST · OPTIONS</span></div>
+
+    <div class="node db"><div class="icon"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 2 4 3 8 3s8-1 8-3V5M4 12c0 2 4 3 8 3s8-1 8-3"/></svg></div><h2>MySQL Database Server</h2><p>Application accounts, anonymised case records, workflow status and file metadata</p><p class="url"><code>10.148.0.3:3306</code></p><span class="badge ok">Private internal access only</span><span class="badge">API tier only</span></div>
+
+    <svg class="wires" viewBox="0 0 1660 710" aria-hidden="true">
+      <defs><marker id="greenArrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" class="arrow"/></marker><marker id="darkArrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" class="arrow-private"/></marker></defs>
+      <path class="wire" marker-end="url(#greenArrow)" d="M263 188 H286 V314 H347"/><path class="wire" marker-end="url(#greenArrow)" d="M263 318 H347"/><path class="wire" marker-end="url(#greenArrow)" d="M263 448 H286 V314 H347"/>
+      <path class="wire" marker-end="url(#greenArrow)" d="M545 314 H575 V235 H602"/><path class="wire" marker-end="url(#greenArrow)" d="M710 235 H727"/><path class="wire" marker-end="url(#greenArrow)" d="M849 235 H866"/><path class="wire" marker-end="url(#greenArrow)" d="M982 235 H1040"/>
+      <path class="wire private" marker-end="url(#darkArrow)" d="M1290 249 H1320 V305 H1350"/>
+      <path class="wire dash" marker-end="url(#darkArrow)" d="M1165 334 V376"/>
+      <text class="wire-label" x="618" y="148">HTTPS / TLS / TCP 443</text><text class="small-label" x="1295" y="226">Private VPC traffic</text>
+    </svg>
+
+    <div class="callout access"><strong>1. Workflow Synchronisation</strong>The REST API coordinates authorised case workflow, upload/download operations and retrieval for browser-based 3D viewing. No AI processing is involved.</div>
+    <div class="callout governance"><strong>2. Data Security and Governance</strong>No direct browser-to-database access. MySQL port 3306 is internal only. Logging, monitoring, backups, patching and vulnerability-management evidence are maintained by the responsible system owners.</div>
+  </section>
+  <footer class="footer">
+    <div class="foot"><strong>Required destination allowlisting</strong>Frontend: <code>https://ndcs-smartrpd.github.io/tmp.rpd/*</code><br>API: <code>https://live.api.smartrpdai.com/api/smartrpd/*</code></div>
+    <div class="foot"><strong>Approved information scope</strong>Anonymised dental scans and anonymised case identifiers only. No patient identifiers, clinical notes or treatment information are stored.</div>
+    <div class="foot warn"><strong>CORS configuration requirement</strong>The API must allow the exact origin <code>https://ndcs-smartrpd.github.io</code>. CORS supplements firewall, authentication and authorisation controls.</div>
+  </footer>
+</main>
+</body>
+</html>
